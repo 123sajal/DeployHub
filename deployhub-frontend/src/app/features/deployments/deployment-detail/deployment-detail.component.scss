@@ -139,3 +139,31 @@ p-message {
   color: var(--dh-text-muted);
   font-size: 0.85rem;
 }
+
+.mode-real {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--dh-info);
+}
+
+.open-app {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--dh-success);
+  border-radius: 8px;
+  color: var(--dh-success);
+  font-weight: 600;
+  .mono {
+    font-weight: 400;
+    font-size: 0.8rem;
+  }
+  &:hover {
+    text-decoration: none;
+    background: var(--dh-surface-hover);
+  }
+}

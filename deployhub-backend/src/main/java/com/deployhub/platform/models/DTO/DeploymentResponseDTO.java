@@ -12,12 +12,18 @@ public record DeploymentResponseDTO(
         DeploymentStatus status,
         ExecutionMode executionMode,
         String commitRef,
+        /** The exact commit SHA that was built (real builds only). */
+        String resolvedCommit,
+        /** Where the running app can be opened, while LIVE (real builds only). */
+        String appUrl,
         String failureReason,
         boolean cancellable,
         /** True when a rollback to this deployment is possible (it was live and has been replaced). */
         boolean rollbackable,
         /** Set when this deployment is a rollback: the earlier deployment it redeploys. */
         Long rollbackOfId,
+        /** True when the deployment may be deleted (finished and not the running app). */
+        boolean deletable,
         Instant createdAt,
         Instant statusChangedAt,
         Instant startedAt,

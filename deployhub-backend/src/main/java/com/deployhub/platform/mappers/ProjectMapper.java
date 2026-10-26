@@ -12,7 +12,18 @@ public final class ProjectMapper {
     public static ProjectResponseDTO toResponse(ProjectMaster project) {
         return new ProjectResponseDTO(project.getId(), project.getName(), project.getRepositoryUrl(),
                 project.getBranch(), project.getAppType(), project.getBuildCommand(), project.getStartCommand(),
+                project.getAppPort(), effectivePort(project), project.getHealthCheckPath(), publicUrl(project),
+                project.isPublicLinkOn(), project.isPublicLinkOn() ? project.getPublicLinkUrl() : null,
                 project.getCreatedAt(), project.getUpdatedAt());
+    }
+
+    /** Address proxies are published on 127.0.0.1 only (M7 puts a public proxy in front). */
+    public static String publicUrl(ProjectMaster project) {
+        return project.getPublicPort() == null ? null : "http://localhost:" + project.getPublicPort();
+    }
+
+    public static int effectivePort(ProjectMaster project) {
+        return project.getAppPort() != null ? project.getAppPort() : project.getAppType().defaultPort();
     }
 
     public static void apply(ProjectRequestDTO request, ProjectMaster project) {
@@ -21,7 +32,9 @@ public final class ProjectMapper {
         project.setBranch(request.branch());
         project.setAppType(request.appType());
         project.setBuildCommand(blankToNull(request.buildCommand()));
-        project.setStartCommand(request.startCommand().trim());
+        project.setStartCommand(blankToNull(request.startCommand()));
+        project.setAppPort(request.appPort());
+        project.setHealthCheckPath(blankToNull(request.healthCheckPath()));
     }
 
     private static String blankToNull(String value) {

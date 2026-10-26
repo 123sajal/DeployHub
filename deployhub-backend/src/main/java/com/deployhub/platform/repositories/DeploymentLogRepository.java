@@ -15,6 +15,10 @@ public interface DeploymentLogRepository extends JpaRepository<DeploymentLog, Lo
     List<DeploymentLog> findByDeploymentIdAndIdGreaterThanOrderByIdAsc(Long deploymentId, Long afterId, Limit limit);
 
     @Modifying
+    @Query("delete from DeploymentLog l where l.deploymentId = :deploymentId")
+    void deleteByDeploymentId(@Param("deploymentId") Long deploymentId);
+
+    @Modifying
     @Query("delete from DeploymentLog l where l.deploymentId in (select d.id from Deployment d where d.project.id = :projectId)")
     void deleteByProjectId(@Param("projectId") Long projectId);
 }

@@ -57,6 +57,8 @@ describe('ProjectFormComponent', () => {
       appType: 'NODE_JS',
       buildCommand: '',
       startCommand: 'node server.js',
+      appPort: null,
+      healthCheckPath: '',
     });
     api.create.mockReturnValue(
       throwError(() => ({ status: 400, title: 'Validation failed', detail: 'x', fieldErrors: { name: 'already used' } })),
@@ -83,6 +85,34 @@ describe('ProjectFormComponent', () => {
 
     expect(api.create).toHaveBeenCalledTimes(1);
     expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(['/app/projects', 9]);
-    expect(api.create.mock.calls[0][0].startCommand).toBe('node server.js'); // suggested from app type
+    expect(api.create.mock.calls[0][0].startCommand).toBe('npm start'); // suggested from app type
+    expect(api.create.mock.calls[0][0]).toEqual(expect.objectContaining({ appPort: null, healthCheckPath: null }));
+  });
+
+  it('lets a Dockerfile project leave the start command empty, but no other type', async () => {
+    const fixture = await setup();
+    const component = fixture.componentInstance as unknown as { form: ProjectFormComponent['form'] };
+    const start = component.form.controls.startCommand;
+
+    component.form.controls.appType.setValue('NODE_JS');
+    start.setValue('');
+    expect(start.valid).toBe(false);
+
+    component.form.controls.appType.setValue('DOCKERFILE');
+    expect(start.valid).toBe(true);
+  });
+
+  it('rejects multi-line commands, bad ports and health paths', async () => {
+    const fixture = await setup();
+    const component = fixture.componentInstance as unknown as { form: ProjectFormComponent['form'] };
+    const { buildCommand, appPort, healthCheckPath } = component.form.controls;
+
+    buildCommand.setValue('npm ci\nnpm test');
+    appPort.setValue(70000);
+    healthCheckPath.setValue('health');
+
+    expect(buildCommand.hasError('pattern')).toBe(true);
+    expect(appPort.hasError('max')).toBe(true);
+    expect(healthCheckPath.hasError('pattern')).toBe(true);
   });
 });

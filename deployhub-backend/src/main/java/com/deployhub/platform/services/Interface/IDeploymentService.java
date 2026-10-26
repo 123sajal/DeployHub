@@ -28,6 +28,9 @@ public interface IDeploymentService {
 
     DeploymentResponseDTO cancel(Long id);
 
+    /** Deletes a finished deployment (FAILED, CANCELLED or SUPERSEDED) with its logs and history; 409 otherwise. */
+    void delete(Long id);
+
     LogPageResponseDTO logs(Long id, long afterCursor, int limit);
 
     DeploymentHistoryResponseDTO history(Long id);

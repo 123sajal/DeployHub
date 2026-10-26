@@ -1,7 +1,7 @@
 package com.deployhub.platform.controllers;
 
 import com.deployhub.platform.models.DTO.HealthResponseDTO;
-import com.deployhub.platform.models.enums.ExecutionMode;
+import com.deployhub.platform.config.DeployHubProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
@@ -22,6 +22,7 @@ public class HealthController {
 
     private final DataSource dataSource;
     private final Environment environment;
+    private final DeployHubProperties properties;
     private final Clock clock;
 
     /** Returns 503 when the database is unreachable, so a load balancer stops routing here. */
@@ -39,7 +40,7 @@ public class HealthController {
         }
         boolean up = "UP".equals(database);
         HealthResponseDTO body = new HealthResponseDTO(up ? "UP" : "DOWN", database, product,
-                List.of(environment.getActiveProfiles()), ExecutionMode.SIMULATED, clock.instant());
+                List.of(environment.getActiveProfiles()), properties.execution().mode(), clock.instant());
         return ResponseEntity.status(up ? HttpStatus.OK : HttpStatus.SERVICE_UNAVAILABLE).body(body);
     }
 }

@@ -1,5 +1,7 @@
 package com.deployhub.platform.worker;
 
+import com.deployhub.platform.deployment.DeploymentLogWriter;
+import com.deployhub.platform.execution.ExecutionContext;
 import com.deployhub.platform.models.entities.Deployment;
 import com.deployhub.platform.models.entities.DeploymentJob;
 import com.deployhub.platform.models.entities.DeploymentStatusChange;
@@ -36,6 +38,7 @@ class DeploymentLifecycleIntegrationTest extends IntegrationTestSupport {
     @Autowired DeploymentJobWorker worker;
     @Autowired IDeploymentService deploymentService;
     @Autowired PlatformTransactionManager transactionManager;
+    @Autowired DeploymentLogWriter logWriter;
 
     private DeploymentStatus statusOf(long id) {
         return deploymentRepository.findById(id).orElseThrow().getStatus();
@@ -311,6 +314,27 @@ class DeploymentLifecycleIntegrationTest extends IntegrationTestSupport {
                 .andExpect(jsonPath("$.items", hasSize(0)))
                 .andExpect(jsonPath("$.nextCursor").value(cursor))
                 .andExpect(jsonPath("$.hasMore").value(false));
+    }
+
+    /**
+     * Regression: docker build prints empty lines, and Oracle stores '' as NULL, which the NOT NULL message
+     * column rejected (every real build failed on Oracle). Blank lines are now skipped.
+     */
+    @Test
+    void blankLogLinesAreSkippedInsteadOfBreakingTheDeployment() throws Exception {
+        long id = createDeployment(createProject("api", "npm ci"));
+        long before = deploymentLogRepository.count();
+        ExecutionContext context = new ExecutionContext(id, logWriter, 100);
+
+        logWriter.info(id, "");
+        logWriter.warn(id, "   ");
+        logWriter.error(id, null);
+        context.output("");
+        context.output("\t");
+        context.output("real line");
+
+        assertThat(deploymentLogRepository.count()).isEqualTo(before + 1);
+        assertThat(deploymentLogRepository.findAll()).anyMatch(l -> l.getMessage().equals("real line"));
     }
 
     @Test

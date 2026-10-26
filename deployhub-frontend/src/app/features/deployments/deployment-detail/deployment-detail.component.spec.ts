@@ -18,6 +18,9 @@ const FAILED: Deployment = {
   cancellable: false,
   rollbackable: false,
   rollbackOfId: null,
+  resolvedCommit: null,
+  appUrl: null,
+  deletable: true,
   createdAt: '2026-10-25T10:00:00Z',
   statusChangedAt: '2026-10-25T10:00:09Z',
   startedAt: '2026-10-25T10:00:01Z',
@@ -87,6 +90,47 @@ describe('DeploymentDetailComponent', () => {
     expect(rows[0]).toContain('You');
     expect(rows[2]).toContain('Worker mac-1a2b');
     expect(rows[2]).toContain('attempt 3');
+  });
+
+  it('links to a live real deployment and shows the exact commit it built', async () => {
+    const live: Deployment = {
+      ...FAILED,
+      id: 15,
+      status: 'LIVE',
+      executionMode: 'REAL',
+      failureReason: null,
+      commitRef: 'main',
+      resolvedCommit: '9fceb02d0ae598e95dc970b74767f19372d61af8',
+      appUrl: 'http://localhost:20017',
+    };
+    const el = await render(live);
+
+    const link = el.querySelector<HTMLAnchorElement>('a.open-app');
+    expect(link?.getAttribute('href')).toBe('http://localhost:20017');
+    expect(link?.getAttribute('rel')).toContain('noopener');
+    expect(el.textContent).toContain('9fceb02d0ae5');
+    expect(el.textContent).toContain('(main)');
+    expect(el.textContent).toContain('Docker');
+  });
+
+  it('deletes a finished deployment after confirmation and returns to its project', async () => {
+    const del = vi.fn(() => of(undefined));
+    const el = await render(FAILED, { delete: del });
+    vi.spyOn(TestBed.inject(ConfirmationService), 'confirm').mockImplementation((c) => {
+      c.accept?.();
+      return TestBed.inject(ConfirmationService);
+    });
+    const navigate = vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+
+    Array.from(el.querySelectorAll('button')).find((b) => b.textContent?.trim() === 'Delete')!.click();
+
+    expect(del).toHaveBeenCalledWith(9);
+    expect(navigate).toHaveBeenCalledWith(['/app/projects', 1]);
+  });
+
+  it('has no delete button for the live deployment', async () => {
+    const el = await render({ ...FAILED, status: 'LIVE', failureReason: null, deletable: false });
+    expect(Array.from(el.querySelectorAll('button')).some((b) => b.textContent?.trim() === 'Delete')).toBe(false);
   });
 
   it('offers no rollback for a deployment that never went live', async () => {

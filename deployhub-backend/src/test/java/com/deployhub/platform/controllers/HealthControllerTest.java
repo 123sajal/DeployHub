@@ -1,5 +1,7 @@
 package com.deployhub.platform.controllers;
 
+import com.deployhub.platform.config.DeployHubProperties;
+import com.deployhub.platform.models.enums.ExecutionMode;
 import com.deployhub.platform.models.DTO.HealthResponseDTO;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
@@ -20,7 +22,11 @@ class HealthControllerTest {
     void reportsDownWith503WhenDatabaseIsUnreachable() throws SQLException {
         DataSource dataSource = mock(DataSource.class);
         when(dataSource.getConnection()).thenThrow(new SQLException("connection refused"));
-        HealthController controller = new HealthController(dataSource, new MockEnvironment(), Clock.systemUTC());
+        DeployHubProperties properties = new DeployHubProperties(null, null, null, null, null,
+                new DeployHubProperties.Execution(ExecutionMode.REAL, "docker", "git", "/tmp", null, null, null,
+                        20000, 20999, "512m", "1.0", 256, 1000, 3), null, null, null);
+        HealthController controller = new HealthController(dataSource, new MockEnvironment(), properties,
+                Clock.systemUTC());
 
         ResponseEntity<HealthResponseDTO> response = controller.health();
 

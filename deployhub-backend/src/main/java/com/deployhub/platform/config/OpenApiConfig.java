@@ -12,10 +12,11 @@ public class OpenApiConfig {
     public OpenAPI deployHubOpenApi() {
         return new OpenAPI().info(new Info()
                 .title("DeployHub Control-Plane API")
-                .version("0.5.0-milestone-5")
+                .version("0.6.0-milestone-6")
                 .description("""
-                        Deployments are SIMULATED: workers take them through a durable job queue (retries, leases,
-                        idempotency keys), but no code is built or run yet.
+                        Deployments go through a durable job queue (retries, leases, idempotency keys). In REAL mode
+                        a worker fetches the public repository, builds it with Docker and runs it on this machine;
+                        in SIMULATED mode nothing is built or run.
                         Authentication uses a server-side session: log in via POST /api/auth/login, and send the
                         XSRF-TOKEN cookie back as an X-XSRF-TOKEN header on every POST/PUT/DELETE."""));
     }

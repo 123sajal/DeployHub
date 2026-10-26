@@ -1,7 +1,7 @@
 import { Component } from '@angular/core';
 import { TooltipModule } from 'primeng/tooltip';
 
-/** Shown next to every deployment until real build workers exist (Milestone 6). */
+/** Shown next to deployments made by the simulator (execution mode SIMULATED): nothing was built or run. */
 @Component({
   selector: 'app-simulated-badge',
   imports: [TooltipModule],

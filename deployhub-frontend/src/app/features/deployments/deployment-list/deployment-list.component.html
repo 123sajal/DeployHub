@@ -42,6 +42,7 @@
                 <th scope="col">Mode</th>
                 <th scope="col">Created</th>
                 <th scope="col">Failure reason</th>
+                <th scope="col"><span class="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>
@@ -59,11 +60,17 @@
                     @if (d.executionMode === 'SIMULATED') {
                       <app-simulated-badge />
                     } @else {
-                      Real
+                      Docker
                     }
                   </td>
                   <td class="dh-muted">{{ d.createdAt | date: 'MMM d, HH:mm:ss' }}</td>
                   <td><span class="reason" [title]="d.failureReason ?? ''">{{ d.failureReason ?? '' }}</span></td>
+                  <td class="row-actions">
+                    @if (d.deletable) {
+                      <p-button icon="pi pi-trash" severity="danger" [text]="true" size="small"
+                                [ariaLabel]="'Delete deployment #' + d.id" (onClick)="confirmDelete(d)" />
+                    }
+                  </td>
                 </tr>
               }
             </tbody>

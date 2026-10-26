@@ -41,3 +41,18 @@
   gap: 0.6rem;
   margin: 0;
 }
+
+.open-app {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--dh-success);
+  border-radius: 8px;
+  color: var(--dh-success);
+  font-weight: 600;
+  &:hover {
+    text-decoration: none;
+    background: var(--dh-surface-hover);
+  }
+}

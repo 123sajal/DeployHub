@@ -12,7 +12,7 @@
   </header>
 
   <section class="hero">
-    <span class="eyebrow"><span class="pip"></span> Preview · simulated deployments</span>
+    <span class="eyebrow"><span class="pip"></span> Preview · real Docker builds, on your machine</span>
     <h1>Deploy your code.<br /><span class="grad">Ship with confidence.</span></h1>
     <p class="lead">
       DeployHub is a learning-grade deployment platform in the spirit of Render, Railway and Vercel. Connect a
@@ -22,7 +22,8 @@
       <p-button label="Get Started" icon="pi pi-arrow-right" iconPos="right" size="large" routerLink="/signup" />
       <p-button label="Explore Dashboard" severity="secondary" [outlined]="true" size="large" routerLink="/app/dashboard" />
     </div>
-    <p class="honest">Builds are simulated in this milestone. No repository code is cloned or executed yet.</p>
+    <p class="honest">Public repositories only. Apps are built and run in Docker on this machine; nothing is deployed
+      to the internet yet.</p>
   </section>
 
   <section class="preview" aria-label="Product preview">
@@ -74,7 +75,7 @@
           <div class="box primary">Spring Boot control-plane API<small>projects · deployments · logs</small></div>
           <i class="pi pi-arrow-down" aria-hidden="true"></i>
           <div class="box">H2 (local) → Oracle Autonomous DB</div>
-          <div class="box dashed">In-process simulated worker</div>
+          <div class="box dashed">Workers · Docker builds & containers</div>
         </div>
       </div>
       <div class="arch-col">

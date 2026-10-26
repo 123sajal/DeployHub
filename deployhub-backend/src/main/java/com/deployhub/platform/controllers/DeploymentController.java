@@ -15,6 +15,7 @@ import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -77,6 +78,13 @@ public class DeploymentController {
             return ResponseEntity.ok().location(location).header("Idempotent-Replayed", "true").body(result.deployment());
         }
         return ResponseEntity.accepted().location(location).body(result.deployment());
+    }
+
+    /** 204. Only FAILED, CANCELLED or SUPERSEDED deployments; a LIVE or in-progress one gives 409. */
+    @DeleteMapping("/deployments/{id}")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        deploymentService.delete(id);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/deployments/{id}/cancel")

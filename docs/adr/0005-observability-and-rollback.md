@@ -42,7 +42,7 @@ behind a load balancer, which needs to know when an instance can take traffic.
 
 ## Consequences / limitations
 - A deployment made without a `commitRef` recorded only a branch, so rolling back to it redeploys that branch's
-  current head. Real builds (M6) will record the resolved commit SHA and make rollbacks exact.
+  current head. Since M6 real builds record the exact commit SHA and rollbacks use it (ADR 0006).
 - A rollback re-runs the project's current build/start commands; there are no stored build artifacts yet.
 - Micrometer counters and timers are per process and reset on restart; Prometheus aggregates them. There is no
   Prometheus/Grafana deployment yet (M7).

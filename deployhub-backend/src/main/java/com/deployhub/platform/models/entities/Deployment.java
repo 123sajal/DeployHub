@@ -52,6 +52,26 @@ public class Deployment {
     @Column(name = "commit_ref", length = 100)
     private String commitRef;
 
+    /** The exact commit SHA that was built (REAL mode). Rollbacks redeploy exactly this commit. */
+    @Column(name = "resolved_commit", length = 40)
+    private String resolvedCommit;
+
+    /** The Docker image the build produced (REAL mode). */
+    @Column(name = "image_ref", length = 200)
+    private String imageRef;
+
+    /** The container running this deployment's app (REAL mode, set when it starts). */
+    @Column(name = "container_name", length = 100)
+    private String containerName;
+
+    /** The port on 127.0.0.1 the running app is published on (REAL mode). */
+    @Column(name = "host_port")
+    private Integer hostPort;
+
+    /** The port the app listens on inside its container, as it was when this deployment went live. */
+    @Column(name = "container_port")
+    private Integer containerPort;
+
     /** Set when this deployment is a rollback: the earlier deployment whose code it redeploys. */
     @Column(name = "rollback_of_id")
     private Long rollbackOfId;
@@ -89,6 +109,25 @@ public class Deployment {
         deployment.createdAt = now;
         deployment.statusChangedAt = now;
         return deployment;
+    }
+
+    /**
+     * Only finished deployments that aren't running: FAILED, CANCELLED, SUPERSEDED. A LIVE one is the running
+     * app (replace it with a newer deployment first); one in progress must be cancelled first.
+     */
+    public boolean canBeDeleted() {
+        return status.isTerminal();
+    }
+
+    public void recordBuild(String resolvedCommit, String imageRef) {
+        this.resolvedCommit = resolvedCommit;
+        this.imageRef = imageRef;
+    }
+
+    public void recordRun(String containerName, Integer hostPort, Integer containerPort) {
+        this.containerName = containerName;
+        this.hostPort = hostPort;
+        this.containerPort = containerPort;
     }
 
     /**

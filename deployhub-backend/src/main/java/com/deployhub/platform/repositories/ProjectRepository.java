@@ -10,6 +10,7 @@ import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.List;
 import java.util.Optional;
 
 /** Every read is scoped by owner id so one user can never load another user's project. */
@@ -22,6 +23,12 @@ public interface ProjectRepository extends JpaRepository<ProjectMaster, Long> {
     boolean existsByOwnerIdAndNameAndIdNot(Long ownerId, String name, Long id);
 
     long countByOwnerId(Long ownerId);
+
+    @Query("select p from ProjectMaster p where p.publicLinkState = 'ON'")
+    List<ProjectMaster> findWithPublicLinkOn();
+
+    @Query("select p.publicPort from ProjectMaster p where p.publicPort is not null")
+    List<Integer> findUsedPublicPorts();
 
     /**
      * SELECT ... FOR UPDATE on the project row. Held until the transaction ends, so only one

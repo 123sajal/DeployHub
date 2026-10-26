@@ -76,6 +76,25 @@ public interface DeploymentRepository extends JpaRepository<Deployment, Long> {
 
     List<Deployment> findByProjectIdAndStatusAndIdNot(Long projectId, DeploymentStatus status, Long id);
 
+    Optional<Deployment> findFirstByProjectIdAndStatus(Long projectId, DeploymentStatus status);
+
+    /** Images of a project's most recent successful deployments (kept for instant rollback). */
+    @Query("""
+            select d.imageRef from Deployment d
+            where d.project.id = :projectId and d.imageRef is not null and d.status in :statuses
+            order by d.id desc
+            """)
+    List<String> findRecentImageRefs(@Param("projectId") Long projectId,
+                                     @Param("statuses") Collection<DeploymentStatus> statuses, Limit limit);
+
+    /** Containers still running for a project (its LIVE deployment), e.g. to stop them when it is deleted. */
+    @Query("""
+            select d.containerName from Deployment d
+            where d.project.id = :projectId and d.containerName is not null
+              and d.status = com.deployhub.platform.models.enums.DeploymentStatus.LIVE
+            """)
+    List<String> findLiveContainerNames(@Param("projectId") Long projectId);
+
     boolean existsByProjectIdAndStatusIn(Long projectId, Collection<DeploymentStatus> statuses);
 
     @Modifying

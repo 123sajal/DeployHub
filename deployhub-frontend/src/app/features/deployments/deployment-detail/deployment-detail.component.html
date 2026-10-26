@@ -10,6 +10,8 @@
             <app-status-badge [status]="d.status" />
             @if (d.executionMode === 'SIMULATED') {
               <app-simulated-badge />
+            } @else {
+              <span class="mode-real"><i class="pi pi-box" aria-hidden="true"></i> Docker</span>
             }
             <span class="dh-muted">of <a [routerLink]="['/app/projects', d.projectId]">{{ d.projectName }}</a></span>
             @if (d.rollbackOfId) {
@@ -20,6 +22,11 @@
             }
           </div>
         </div>
+        @if (d.appUrl) {
+          <a class="open-app" [href]="d.appUrl" target="_blank" rel="noopener noreferrer">
+            <i class="pi pi-external-link" aria-hidden="true"></i> Open app <span class="mono">{{ d.appUrl }}</span>
+          </a>
+        }
         @if (d.cancellable) {
           <p-button label="Cancel deployment" icon="pi pi-stop-circle" severity="danger" [outlined]="true"
                     [loading]="cancelling()" (onClick)="confirmCancel()" />
@@ -27,6 +34,10 @@
         @if (d.rollbackable) {
           <p-button label="Roll back to this" icon="pi pi-history" severity="secondary" [outlined]="true"
                     [loading]="rollingBack()" (onClick)="confirmRollback(d)" />
+        }
+        @if (d.deletable) {
+          <p-button label="Delete" icon="pi pi-trash" severity="danger" [text]="true"
+                    [loading]="deleting()" (onClick)="confirmDelete(d)" />
         }
       </header>
 
@@ -87,7 +98,16 @@
           <dt>Last status change</dt>
           <dd>{{ d.statusChangedAt | date: 'medium' }}</dd>
           <dt>Commit</dt>
-          <dd class="mono">{{ d.commitRef ?? 'branch head' }}</dd>
+          <dd class="mono">
+            @if (d.resolvedCommit) {
+              <span [title]="d.resolvedCommit">{{ d.resolvedCommit.slice(0, 12) }}</span>
+              @if (d.commitRef && d.commitRef !== d.resolvedCommit) {
+                <span class="dh-muted"> ({{ d.commitRef }})</span>
+              }
+            } @else {
+              {{ d.commitRef ?? 'branch head' }}
+            }
+          </dd>
         </dl>
       </section>
 

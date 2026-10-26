@@ -1,5 +1,6 @@
 package com.deployhub.platform.config;
 
+import com.deployhub.platform.models.enums.ExecutionMode;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
 import java.time.Duration;
@@ -7,7 +8,8 @@ import java.util.List;
 
 @ConfigurationProperties(prefix = "deployhub")
 public record DeployHubProperties(Worker worker, Deployments deployments, Security security, Logs logs,
-                                  Metrics metrics) {
+                                  Metrics metrics, Execution execution, Gateway gateway, Secrets secrets,
+                                  Databases databases) {
 
     /**
      * @param enabled          run deployment workers inside this process (API-only nodes can switch it off)
@@ -38,6 +40,59 @@ public record DeployHubProperties(Worker worker, Deployments deployments, Securi
      */
     public record Logs(Duration streamPollInterval, Duration streamTimeout, Duration heartbeatInterval,
                        int maxStreamsPerUser, int maxStreams) {
+    }
+
+    /**
+     * @param mode                  REAL (Docker) or SIMULATED, for deployments created from now on
+     * @param dockerCommand         the docker CLI (on the PATH, or an absolute path)
+     * @param gitCommand            the git CLI
+     * @param workspace             folder for temporary source checkouts (deleted after each build)
+     * @param cloneTimeout          limit for fetching the source
+     * @param buildTimeout          limit for docker build
+     * @param startTimeout          limit for the container to answer its health check
+     * @param portRangeStart        first host port for running apps (published on 127.0.0.1 only)
+     * @param portRangeEnd          last host port for running apps
+     * @param containerMemory       memory limit per app container (docker --memory)
+     * @param containerCpus         CPU limit per app container (docker --cpus)
+     * @param containerPidsLimit    process limit per app container (stops fork bombs)
+     * @param maxLogLinesPerStep    build/start output kept per step; the rest is summarised in one line
+     * @param keepImagesPerProject  images of the last N successful deployments are kept for instant rollback
+     */
+    public record Execution(ExecutionMode mode, String dockerCommand, String gitCommand, String workspace,
+                            Duration cloneTimeout, Duration buildTimeout, Duration startTimeout,
+                            int portRangeStart, int portRangeEnd, String containerMemory, String containerCpus,
+                            int containerPidsLimit, int maxLogLinesPerStep, int keepImagesPerProject) {
+    }
+
+    /**
+     * Each project's fixed address: a small proxy container per project, published on 127.0.0.1.
+     *
+     * @param portRangeStart first port for project addresses
+     * @param portRangeEnd   last port for project addresses
+     * @param proxyImage     the proxy's Docker image
+     * @param tunnelImage    image of the tunnel that gives a project its public link (Cloudflare quick tunnel)
+     * @param publicLinkRefresh how often public links are checked (a restarted tunnel gets a new link)
+     */
+    public record Gateway(int portRangeStart, int portRangeEnd, String proxyImage, String tunnelImage,
+                          java.time.Duration publicLinkRefresh) {
+    }
+
+    /**
+     * The shared MySQL server behind one-click databases.
+     *
+     * @param mysqlImage    server image
+     * @param containerName container name; apps reach it by this name on the deployhub network
+     * @param volume        Docker volume holding all databases' data
+     * @param hostPort      port on 127.0.0.1 for connecting from this machine (e.g. to create tables)
+     * @param memory        memory limit of the server container
+     * @param startTimeout  how long the first start (which initialises the server) may take
+     */
+    public record Databases(String mysqlImage, String containerName, String volume, int hostPort, String memory,
+                            Duration startTimeout) {
+    }
+
+    /** @param key base64 of 32 random bytes; encrypts environment variable values (AES-256-GCM) */
+    public record Secrets(String key) {
     }
 
     /**

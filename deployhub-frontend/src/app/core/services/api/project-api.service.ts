@@ -3,7 +3,16 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../../../environments/environment';
-import { ApplicationType, Page, Project, ProjectRequest } from '../../models/api.models';
+import {
+  ApplicationType,
+  EnvVar,
+  Page,
+  Project,
+  ProjectDatabase,
+  ProjectRequest,
+  PublicLink,
+  ProjectRoute,
+} from '../../models/api.models';
 
 export interface ProjectQuery {
   search?: string;
@@ -38,5 +47,62 @@ export class ProjectApiService {
 
   delete(id: number): Observable<void> {
     return this.http.delete<void>(`${this.baseUrl}/${id}`);
+  }
+
+  /** Names only: values are write-only. */
+  listEnv(projectId: number): Observable<EnvVar[]> {
+    return this.http.get<EnvVar[]>(`${this.baseUrl}/${projectId}/env`);
+  }
+
+  /** Creates or replaces a variable; it is encrypted on the server and applies at the next deployment. */
+  setEnv(projectId: number, name: string, value: string): Observable<EnvVar> {
+    return this.http.put<EnvVar>(`${this.baseUrl}/${projectId}/env/${encodeURIComponent(name)}`, { value });
+  }
+
+  deleteEnv(projectId: number, name: string): Observable<void> {
+    return this.http.delete<void>(`${this.baseUrl}/${projectId}/env/${encodeURIComponent(name)}`);
+  }
+
+  getPublicLink(projectId: number): Observable<PublicLink> {
+    return this.http.get<PublicLink>(`${this.baseUrl}/${projectId}/public-link`);
+  }
+
+  /** Makes the (live) project reachable from the internet; can take up to a minute. */
+  enablePublicLink(projectId: number): Observable<PublicLink> {
+    return this.http.post<PublicLink>(`${this.baseUrl}/${projectId}/public-link`, null);
+  }
+
+  disablePublicLink(projectId: number): Observable<PublicLink> {
+    return this.http.delete<PublicLink>(`${this.baseUrl}/${projectId}/public-link`);
+  }
+
+  /** The project's database, or null when it has none (204). */
+  getDatabase(projectId: number): Observable<ProjectDatabase | null> {
+    return this.http.get<ProjectDatabase | null>(`${this.baseUrl}/${projectId}/database`);
+  }
+
+  /** Creates it (the first one can take a minute or two) and returns the password once. */
+  createDatabase(projectId: number): Observable<ProjectDatabase> {
+    return this.http.post<ProjectDatabase>(`${this.baseUrl}/${projectId}/database`, null);
+  }
+
+  resetDatabasePassword(projectId: number): Observable<ProjectDatabase> {
+    return this.http.post<ProjectDatabase>(`${this.baseUrl}/${projectId}/database/reset-password`, null);
+  }
+
+  /** Deletes the database with all its data. */
+  removeDatabase(projectId: number): Observable<void> {
+    return this.http.delete<void>(`${this.baseUrl}/${projectId}/database`);
+  }
+
+  listRoutes(projectId: number): Observable<ProjectRoute[]> {
+    return this.http.get<ProjectRoute[]>(`${this.baseUrl}/${projectId}/routes`);
+  }
+
+  /** Replaces all routes; the project's address is updated right away. */
+  replaceRoutes(projectId: number, routes: ProjectRoute[]): Observable<ProjectRoute[]> {
+    return this.http.put<ProjectRoute[]>(`${this.baseUrl}/${projectId}/routes`, {
+      routes: routes.map(({ pathPrefix, targetProjectId }) => ({ pathPrefix, targetProjectId })),
+    });
   }
 }

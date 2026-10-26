@@ -29,7 +29,15 @@ public class DeploymentLogWriter {
         write(deploymentId, LogLevel.ERROR, message);
     }
 
+    /**
+     * Blank lines (build tools print plenty) are skipped: they carry nothing, and Oracle stores an empty
+     * string as NULL, which the NOT NULL message column rejects.
+     */
     private void write(Long deploymentId, LogLevel level, String message) {
-        repository.save(new DeploymentLog(deploymentId, level, LogSanitizer.sanitize(message), clock.instant()));
+        String safe = LogSanitizer.sanitize(message);
+        if (safe.isBlank()) {
+            return;
+        }
+        repository.save(new DeploymentLog(deploymentId, level, safe, clock.instant()));
     }
 }

@@ -65,6 +65,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return problem(HttpStatus.UNAUTHORIZED, "Authentication required", "Log in to access this resource.");
     }
 
+    /** A service DeployHub depends on (e.g. Docker for databases) isn't available right now. */
+    @ExceptionHandler(ServiceUnavailableException.class)
+    ProblemDetail handleServiceUnavailable(ServiceUnavailableException ex) {
+        return problem(HttpStatus.SERVICE_UNAVAILABLE, "Service unavailable", ex.getMessage());
+    }
+
     @ExceptionHandler(IdempotencyKeyReuseException.class)
     ProblemDetail handleIdempotencyReuse(IdempotencyKeyReuseException ex) {
         return problem(HttpStatus.UNPROCESSABLE_CONTENT, "Idempotency key reused", ex.getMessage());

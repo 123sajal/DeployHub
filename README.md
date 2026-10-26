@@ -3,8 +3,9 @@
 A learning-grade deployment platform inspired by Render, Railway and Vercel, built milestone by milestone
 to demonstrate backend engineering and system design.
 
-> **Current state: Milestone 5 (live log streaming, metrics, health probes, rollback) complete.** Deployments are
-> **simulated**: no repository is cloned and no code is built or executed yet. Sign up at http://localhost:4200/signup; every user sees only their own data.
+> **Current state: Milestone 6 (real builds) complete.** Deployments clone a **public** repository (read-only),
+> build it with **Docker** and run it in a resource-limited container on this machine (`http://localhost:<port>`).
+> Nothing is deployed to the internet yet (that is Milestone 7). Sign up at http://localhost:4200/signup; every user sees only their own data.
 
 ## Repository layout
 
@@ -67,9 +68,10 @@ No cloud account needed: [docs/oracle-setup.md](docs/oracle-setup.md) shows how 
 ## Tests and builds
 
 ```bash
-cd ~/Desktop/DeployHub/deployhub-backend && ./mvnw test                # 113 tests on H2 (no Docker needed)
-cd ~/Desktop/DeployHub/deployhub-backend && ./mvnw test -Poracle-it     # 73 tests on real Oracle Free (needs Docker running)
-cd ~/Desktop/DeployHub/deployhub-frontend && npx ng test --watch=false   # 77 Vitest tests
+cd ~/Desktop/DeployHub/deployhub-backend && ./mvnw test                # 222 tests on H2 (no Docker needed; uses the simulator)
+cd ~/Desktop/DeployHub/deployhub-backend && ./mvnw test -Poracle-it     # 127 tests on real Oracle Free (needs Docker running)
+cd ~/Desktop/DeployHub/deployhub-backend && ./mvnw test -Pdocker-it     # 7 tests: real git, build/run, address proxy, MySQL isolation
+cd ~/Desktop/DeployHub/deployhub-frontend && npx ng test --watch=false   # 98 Vitest tests
 cd ~/Desktop/DeployHub/deployhub-frontend && npx ng build
 ```
 
@@ -95,10 +97,14 @@ on real Oracle Database Free with Hibernate schema validation. Autonomous Databa
 | `Idempotency-Key` on deployment creation (DB-enforced; same key + different request → 422) | ✅ Milestone 4 |
 | Backpressure: per-worker concurrency limit, max 5 in-progress deployments per user (429) | ✅ Milestone 4 |
 | Deployment status history (who/when/why/attempt) in API and UI | ✅ Milestone 4 |
-| Deployment execution | 🟡 **Simulated** steps (3 s each). Build-command keywords: `fail` = permanent error, `flaky` = fails twice then succeeds, `unstable` = always fails → DEAD. |
-| Health check before LIVE | 🟡 Simulated log line only |
+| Real deployments: read-only `git fetch` of a public repo, `docker build`, `docker run` with limits, HTTP health check, then LIVE | ✅ Milestone 6 (`deployhub.execution.mode=REAL`, the default) |
+| Generated Dockerfiles for Java/Spring Boot, Node.js, static sites, Python; or the repository's own Dockerfile | ✅ Milestone 6 |
+| Container isolation: memory/CPU/process limits, all capabilities dropped, no-new-privileges, unprivileged user, published on 127.0.0.1 only | ✅ Milestone 6 |
+| Exact commit recorded per deployment; images reused for the same commit + settings (instant rollback); old images pruned | ✅ Milestone 6 |
+| Cancel stops a running build within ~2 s; long builds keep their lease via a background heartbeat | ✅ Milestone 6 |
+| Simulator (no Docker): `deployhub.execution.mode=SIMULATED`. Build-command keywords: `fail` = permanent error, `flaky` = fails twice then succeeds, `unstable` = always fails → DEAD | ✅ Kept for tests and Docker-less runs |
 | Live logs over Server-Sent Events (`/logs/stream`), resuming via `Last-Event-ID`; falls back to cursor polling | ✅ Milestone 5 |
-| Rollback: `POST /api/deployments/{id}/rollback` queues a new deployment of an earlier (replaced) one | ✅ Milestone 5. 🟡 Without a `commitRef` the code version isn't pinned yet (real commit SHAs arrive in M6) |
+| Rollback: `POST /api/deployments/{id}/rollback` queues a new deployment of an earlier (replaced) one | ✅ Milestone 5; exact commit since M6 |
 | Metrics: queue depth, queue wait, throughput, retries, durations at `/actuator/prometheus`; last-hour panel on the dashboard | ✅ Milestone 5 |
 | Liveness / readiness probes (`/actuator/health/liveness`, `/readiness` incl. database + worker), graceful shutdown | ✅ Milestone 5 |
 | `oracle` profile (env/.env config, no fallback, schema validation, small pool) | ✅ Milestone 2 |
@@ -109,7 +115,12 @@ on real Oracle Database Free with Hibernate schema validation. Autonomous Databa
 | Login throttling (per email+IP and per IP) and sign-up limit per IP | ✅ Milestone 3 |
 | Audit log (`audit_events`: sign-ups, logins, failures, logouts, project/deployment actions) | ✅ Milestone 3 |
 | Profile editing, password change/reset, email verification | ⏳ Later |
-| GitHub integration, isolated Docker builds | ⏳ Milestone 6 |
+| Environment variables per project: encrypted (AES-256-GCM), write-only, masked in logs, passed as `-e NAME` | ✅ Milestone 6 |
+| Fixed address per project (`http://localhost:19xxx`) via a small nginx proxy; zero-downtime switch on redeploy | ✅ Milestone 6 |
+| Routes: send a path (e.g. `/api`) of a project's address to another project's live app (no CORS needed) | ✅ Milestone 6 |
+| One-click MySQL database per project on a shared server; connection details set as environment variables | ✅ Milestone 6. ⚠️ No backups yet |
+| Public link per project (opt-in): an https link anyone can open, via a free Cloudflare quick tunnel; "Open app" uses it | ✅ Milestone 6. 🟡 Link changes when the tunnel restarts; works while this Mac is on |
+| Private repositories, build on push (webhooks) | ⏳ Later (only with your explicit go-ahead: they change things on GitHub) |
 | OCI deployment, HTTPS | ⏳ Milestone 7 |
 
 ## API (as of Milestone 5)
@@ -128,6 +139,13 @@ on real Oracle Database Free with Hibernate schema validation. Autonomous Databa
 | GET | `/api/deployments?projectId=&status=&page=&size=` | |
 | GET | `/api/deployments/{id}` | |
 | POST | `/api/deployments/{id}/cancel` | 409 if already final |
+| GET | `/api/projects/{id}/env` | Variable names only (values are never returned) |
+| PUT / DELETE | `/api/projects/{id}/env/{NAME}` | `{"value": "..."}`; encrypted before storing; applies at the next deployment. `PORT` is reserved |
+| GET / POST / DELETE | `/api/projects/{id}/database` | One-click MySQL database: 204 if none; POST creates it and returns the password once (503 if Docker is down); DELETE drops it with all data |
+| GET / POST / DELETE | `/api/projects/{id}/public-link` | Public internet link: POST turns it on (project must be live; 409 otherwise), DELETE turns it off |
+| POST | `/api/projects/{id}/database/reset-password` | New password (returned once); DB_PASSWORD and DATABASE_URL updated |
+| GET / PUT | `/api/projects/{id}/routes` | `{"routes":[{"pathPrefix":"/api","targetProjectId":12}]}` replaces all routes; the address updates at once |
+| DELETE | `/api/deployments/{id}` | 204. Only FAILED, CANCELLED or SUPERSEDED (with its logs, history and job); 409 for the LIVE one or one in progress |
 | POST | `/api/deployments/{id}/rollback` | **202**: a new deployment that redeploys `{id}`, which must be SUPERSEDED (was live, since replaced); 409 otherwise. Same `Idempotency-Key` and 429 rules as a deploy |
 | GET | `/api/deployments/{id}/history` | Every status change (who/when/why/attempt) plus the queue job's attempts and next retry |
 | GET | `/api/deployments/{id}/logs?after=<cursor>&limit=` | Returns `nextCursor`, `hasMore` and `deploymentStatus` |
@@ -172,11 +190,45 @@ curl -s localhost:8080/actuator/prometheus | grep deployhub_
 is the throughput), `deployhub_jobs_retries_total`, `deployhub_deployments_duration_seconds{status}`. Counters and timers
 are per process and start from zero on restart; Prometheus adds them up across processes.
 
+### Deploying an app that has a frontend, a backend and a database
+1. **Database:** on the backend project's page, click **Add MySQL database**. DeployHub creates it on its shared
+   MySQL server and sets `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` and `DATABASE_URL`. The password
+   is shown once; create your tables from your Mac on `127.0.0.1:3307` (or in the app's start command).
+2. **Backend project:** add any other environment variables (e.g. `JWT_SECRET`), then deploy. If its code is in a subfolder: build `cd backend && npm ci`, start `cd backend && npm start`.
+3. **Frontend project** (type Static site): add the route `/api` → the backend project, and make the frontend call
+   `/api/...` (a relative URL). Deploy and open the frontend's address: `/api` requests reach the backend, no CORS.
+4. Every project keeps its address (`http://localhost:19xxx`) across redeploys and rollbacks.
+5. **Share it:** on the frontend project, **Make public** gives an https link anyone can open. Keep the backend
+   private: it is reached through the frontend's `/api` route.
+
+`DEPLOYHUB_SECRETS_KEY` in `deployhub-backend/.env` encrypts the variables. Never change or lose it.
+
+### Real builds: what to know
+- **Docker Desktop must be running.** If it isn't, deployments retry and then fail with "Docker is not running".
+- **Public repositories only.** git runs with every credential source switched off (no keychain, no IDE askpass),
+  so a private repository fails with "Repository not found or not public" instead of using your GitHub login.
+- **Your app must listen on `0.0.0.0` and the port in `$PORT`.** Set the project's port if it isn't the type's
+  default (Java 8080, Node/static 3000, Python 8000, Dockerfile 8080). The health check path must answer below HTTP 500.
+- **Where it runs:** each LIVE deployment gets its own port between 20000 and 20999 on `127.0.0.1`; the project page
+  has an "Open app" link. Replaced deployments' containers are stopped. Containers restart with Docker Desktop.
+- **Resources:** 512 MB memory, 1 CPU and 256 processes per app (`deployhub.execution.container-*`). Docker Desktop on
+  this Mac has about 4 GB in total, shared with Oracle, so keep only a few apps live at once.
+- **Clean up by hand** (if ever needed): `docker ps --filter label=deployhub.project` lists DeployHub's containers,
+  `docker image ls 'deployhub/*'` its images.
+
 ### Known limitations
 - Each open log stream checks the database for new lines twice a second (workers may run in other processes, so
   the database is the only place that sees every line). That is cheap at this scale; limits (5 per user, 100 per
   process) protect the connection pool. Thousands of viewers would need a push channel (e.g. Oracle AQ or Redis).
-- A rollback re-runs the project's *current* build and start commands; there are no stored build artifacts yet.
+- A rollback reuses the stored image when the commit and settings are unchanged; otherwise it rebuilds that exact
+  commit with the project's *current* commands. Only the images of the last 3 successful deployments are kept.
+- A LIVE app is not watched after its health check: if it crashes later, Docker restarts it, but DeployHub still
+  shows LIVE.
+- Files an app writes (e.g. uploads) are lost when it is redeployed; keep data in a database.
+- Environment variables are available when the app runs, not during its build.
+- Builds have a time limit (15 min) but no memory limit of their own (Docker's build engine doesn't support one).
+- Workers of the same deployment share a container name; if a worker is presumed dead but still running, the
+  takeover can remove its container. Leases make this rare; the deployment then retries.
 - Only the newest deployment of a project can go LIVE. If an older one finishes after a newer one is already
   live (e.g. it needed retries), it is marked CANCELLED ("Skipped: newer deployment #N is already live").
 - Job execution is **at-least-once**: after a crash a step may run again (steps are written to be safe to repeat).
@@ -195,4 +247,7 @@ Decision records: [0001 foundations](docs/adr/0001-milestone-1-foundations.md),
 [0002 Oracle persistence](docs/adr/0002-oracle-persistence.md),
 [0003 authentication](docs/adr/0003-authentication-and-tenant-isolation.md),
 [0004 durable deployment jobs](docs/adr/0004-durable-deployment-jobs.md),
-[0005 observability and rollback](docs/adr/0005-observability-and-rollback.md).
+[0005 observability and rollback](docs/adr/0005-observability-and-rollback.md),
+[0006 real Docker builds](docs/adr/0006-real-docker-builds.md),
+[0007 environment variables and project addresses](docs/adr/0007-env-vars-and-project-addresses.md),
+[0008 one-click databases](docs/adr/0008-one-click-databases.md).

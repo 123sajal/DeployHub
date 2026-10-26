@@ -47,7 +47,11 @@
       </button>
       <div class="notice" role="note">
         <i class="pi pi-info-circle" aria-hidden="true"></i>
-        <span><strong>Preview:</strong> deployments are simulated, nothing is built or run yet.</span>
+        @if (health()?.deploymentExecutionMode === 'SIMULATED') {
+          <span><strong>Simulation mode:</strong> deployments are simulated, nothing is built or run.</span>
+        } @else {
+          <span><strong>Local preview:</strong> apps are built and run in Docker on this machine (localhost only).</span>
+        }
       </div>
       @if (user(); as u) {
         <div class="user">

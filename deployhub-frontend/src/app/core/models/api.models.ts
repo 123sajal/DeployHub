@@ -24,9 +24,60 @@ export interface Project {
   branch: string;
   appType: ApplicationType;
   buildCommand: string | null;
-  startCommand: string;
+  /** Null for Dockerfile projects that use their image's own start command. */
+  startCommand: string | null;
+  /** Port the app listens on in its container; null = the app type's default. */
+  appPort: number | null;
+  /** The port actually used (appPort or the type's default). */
+  effectivePort: number;
+  /** Path the health check requests; null = "/". */
+  healthCheckPath: string | null;
+  /** The project's fixed address on this computer, e.g. http://localhost:19001 (set once it has run for real). */
+  localUrl: string | null;
+  /** True when the project has a public internet link (opt-in). */
+  publicLinkEnabled: boolean;
+  /** The public link, e.g. https://xyz.trycloudflare.com, while enabled. */
+  publicLink: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+/** An environment variable as the API shows it: the name only, never the value. */
+export interface EnvVar {
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A project's public internet link (Cloudflare quick tunnel to its address). */
+export interface PublicLink {
+  enabled: boolean;
+  url: string | null;
+  localUrl: string | null;
+}
+
+/** A project's one-click database on DeployHub's shared MySQL server. */
+export interface ProjectDatabase {
+  engine: string;
+  databaseName: string;
+  username: string;
+  /** How the app reaches it (DB_HOST / DB_PORT). */
+  appHost: string;
+  appPort: number;
+  /** How this computer reaches it, e.g. to create tables. */
+  localHost: string;
+  localPort: number;
+  /** Only right after creating it or resetting the password. */
+  password: string | null;
+  createdAt: string;
+  environmentVariables: string[];
+}
+
+/** Requests to pathPrefix on the project's address go to the target project's live app. */
+export interface ProjectRoute {
+  pathPrefix: string;
+  targetProjectId: number;
+  targetProjectName?: string;
 }
 
 export interface ProjectRequest {
@@ -35,7 +86,9 @@ export interface ProjectRequest {
   branch: string;
   appType: ApplicationType;
   buildCommand: string | null;
-  startCommand: string;
+  startCommand: string | null;
+  appPort: number | null;
+  healthCheckPath: string | null;
 }
 
 export interface Deployment {
@@ -45,12 +98,18 @@ export interface Deployment {
   status: DeploymentStatus;
   executionMode: ExecutionMode;
   commitRef: string | null;
+  /** Exact commit SHA that was built (real builds only). */
+  resolvedCommit: string | null;
+  /** Where the running app opens while LIVE (real builds only), e.g. http://localhost:20017. */
+  appUrl: string | null;
   failureReason: string | null;
   cancellable: boolean;
   /** True when this deployment was live and has been replaced, so it can be rolled back to. */
   rollbackable: boolean;
   /** Set when this deployment is a rollback: the earlier deployment it redeploys. */
   rollbackOfId: number | null;
+  /** True when it may be deleted: finished (failed, cancelled or replaced) and not the running app. */
+  deletable: boolean;
   createdAt: string;
   statusChangedAt: string;
   startedAt: string | null;

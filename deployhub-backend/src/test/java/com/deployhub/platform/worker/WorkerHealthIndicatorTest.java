@@ -21,7 +21,7 @@ class WorkerHealthIndicatorTest {
 
     private static DeployHubProperties properties(Duration pollInterval) {
         return new DeployHubProperties(new DeployHubProperties.Worker(true, "w", pollInterval, 2, Duration.ofSeconds(30),
-                Duration.ZERO, 3, Duration.ZERO, Duration.ZERO), null, null, null, null);
+                Duration.ZERO, 3, Duration.ZERO, Duration.ZERO), null, null, null, null, null, null, null, null);
     }
 
     private static WorkerHealthIndicator indicator(DeploymentJobScheduler scheduler, Duration pollInterval) {

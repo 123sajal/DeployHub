@@ -5,8 +5,8 @@
     </a>
     <h1>{{ isEdit() ? 'Edit project' : 'New project' }}</h1>
     <p class="dh-muted">
-      DeployHub records how your app is built and started. In this milestone nothing is executed: deployments are
-      simulated.
+      How your app is built and started. DeployHub clones the repository (read-only, public repositories only),
+      builds it with Docker and runs it on this machine.
     </p>
   </header>
 
@@ -57,7 +57,7 @@
         <input pInputText id="buildCommand" formControlName="buildCommand" class="mono" placeholder="npm run build"
                aria-describedby="build-hint" />
         <small id="build-hint" class="dh-hint">
-          Never put secrets here. Environment variables will get their own encrypted store.
+          Runs inside Docker's build sandbox, not on your computer. Never put secrets here.
         </small>
         @if (showError('buildCommand')) {
           <small class="dh-error" role="alert">{{ errorText('buildCommand') }}</small>
@@ -65,12 +65,40 @@
       </div>
 
       <div class="dh-field">
-        <label for="startCommand">Start command</label>
-        <input pInputText id="startCommand" formControlName="startCommand" class="mono" placeholder="node server.js"
-               [attr.aria-invalid]="showError('startCommand')" aria-describedby="start-error" />
+        <label for="startCommand">
+          Start command
+          @if (isDockerfile()) {
+            <span class="dh-muted">(optional: empty = the Dockerfile's CMD)</span>
+          }
+        </label>
+        <input pInputText id="startCommand" formControlName="startCommand" class="mono" placeholder="npm start"
+               [attr.aria-invalid]="showError('startCommand')" aria-describedby="start-hint start-error" />
+        <small id="start-hint" class="dh-hint">The app must listen on 0.0.0.0 and the port in <code>$PORT</code>.</small>
         @if (showError('startCommand')) {
           <small id="start-error" class="dh-error" role="alert">{{ errorText('startCommand') }}</small>
         }
+      </div>
+
+      <div class="row">
+        <div class="dh-field">
+          <label for="appPort">Port <span class="dh-muted">(optional)</span></label>
+          <input pInputText id="appPort" formControlName="appPort" type="number" class="mono" min="1" max="65535"
+                 [placeholder]="defaultPort() ?? ''" [attr.aria-invalid]="showError('appPort')"
+                 aria-describedby="port-hint port-error" />
+          <small id="port-hint" class="dh-hint">Where the app listens inside its container. Empty = type default.</small>
+          @if (showError('appPort')) {
+            <small id="port-error" class="dh-error" role="alert">{{ errorText('appPort') }}</small>
+          }
+        </div>
+        <div class="dh-field">
+          <label for="healthCheckPath">Health check path <span class="dh-muted">(optional)</span></label>
+          <input pInputText id="healthCheckPath" formControlName="healthCheckPath" class="mono" placeholder="/"
+                 [attr.aria-invalid]="showError('healthCheckPath')" aria-describedby="health-hint health-error" />
+          <small id="health-hint" class="dh-hint">Must answer HTTP (below 500) before the deployment goes live.</small>
+          @if (showError('healthCheckPath')) {
+            <small id="health-error" class="dh-error" role="alert">{{ errorText('healthCheckPath') }}</small>
+          }
+        </div>
       </div>
 
       @if (submitError(); as message) {

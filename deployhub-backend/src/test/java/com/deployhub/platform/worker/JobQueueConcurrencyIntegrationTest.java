@@ -3,6 +3,10 @@ package com.deployhub.platform.worker;
 import com.deployhub.platform.config.DeployHubProperties;
 import com.deployhub.platform.deployment.DeploymentLogWriter;
 import com.deployhub.platform.deployment.DeploymentMetrics;
+import com.deployhub.platform.deployment.ProjectGateways;
+import com.deployhub.platform.execution.DeploymentExecutors;
+import com.deployhub.platform.repositories.ProjectEnvVarRepository;
+import com.deployhub.platform.security.SecretCipher;
 import com.deployhub.platform.deployment.DeploymentTransitionService;
 import com.deployhub.platform.models.entities.DeploymentJob;
 import com.deployhub.platform.models.entities.DeploymentStatusChange;
@@ -36,6 +40,10 @@ class JobQueueConcurrencyIntegrationTest extends IntegrationTestSupport {
     @Autowired DeploymentTransitionService transitions;
     @Autowired DeploymentLogWriter logWriter;
     @Autowired DeploymentMetrics metrics;
+    @Autowired DeploymentExecutors executors;
+    @Autowired ProjectGateways gateways;
+    @Autowired ProjectEnvVarRepository envVars;
+    @Autowired SecretCipher cipher;
     @Autowired PlatformTransactionManager transactionManager;
     @Autowired DeployHubProperties properties;
 
@@ -44,8 +52,11 @@ class JobQueueConcurrencyIntegrationTest extends IntegrationTestSupport {
         DeployHubProperties.Worker settings = new DeployHubProperties.Worker(false, id, base.pollInterval(), 1, lease,
                 Duration.ZERO, base.maxAttempts(), Duration.ZERO, base.retryMaxDelay());
         return new DeploymentJobWorker(jobRepository, deploymentRepository, projectRepository, transitions, logWriter,
-                metrics, transactionManager, new DeployHubProperties(settings, properties.deployments(),
-                properties.security(), properties.logs(), properties.metrics()), Clock.systemUTC());
+                metrics, executors, gateways, envVars, cipher, transactionManager,
+                new DeployHubProperties(settings, properties.deployments(), properties.security(), properties.logs(),
+                        properties.metrics(), properties.execution(), properties.gateway(), properties.secrets(),
+                        properties.databases()),
+                Clock.systemUTC());
     }
 
     private DeploymentJob jobOf(long deploymentId) {

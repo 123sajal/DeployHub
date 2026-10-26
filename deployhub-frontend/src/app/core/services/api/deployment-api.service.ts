@@ -52,6 +52,11 @@ export class DeploymentApiService {
     return this.http.post<Deployment>(`${this.baseUrl}/deployments/${id}/rollback`, null, { headers });
   }
 
+  /** Only finished deployments that aren't the running app (see Deployment.deletable); 409 otherwise. */
+  delete(id: number): Observable<void> {
+    return this.http.delete<void>(`${this.baseUrl}/deployments/${id}`);
+  }
+
   cancel(id: number): Observable<Deployment> {
     return this.http.post<Deployment>(`${this.baseUrl}/deployments/${id}/cancel`, null);
   }

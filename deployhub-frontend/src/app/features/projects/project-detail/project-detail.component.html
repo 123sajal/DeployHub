@@ -11,8 +11,13 @@
           </a>
         </div>
         <div class="actions">
+          @if (appUrl(); as url) {
+            <a class="open-app" [href]="url" target="_blank" rel="noopener noreferrer">
+              <i class="pi pi-external-link" aria-hidden="true"></i> Open app
+            </a>
+          }
           <p-button label="Delete" icon="pi pi-trash" severity="danger" [text]="true" (onClick)="confirmDelete(p)" />
-          <p-button label="Settings" icon="pi pi-pencil" severity="secondary" [routerLink]="['/app/projects', p.id, 'edit']" />
+          <p-button label="Edit project" icon="pi pi-pencil" severity="secondary" [routerLink]="['/app/projects', p.id, 'edit']" />
           <p-button label="Deploy" icon="pi pi-cloud-upload" [loading]="deploying()" (onClick)="deploy()" />
         </div>
       </header>
@@ -21,6 +26,14 @@
         <section class="dh-card">
           <h2 class="dh-card-title">Configuration</h2>
           <dl class="dh-dl">
+            <dt>Address on this computer</dt>
+            <dd class="mono">
+              @if (p.localUrl) {
+                <a [href]="p.localUrl" target="_blank" rel="noopener noreferrer">{{ p.localUrl }}</a>
+              } @else {
+                <span class="dh-muted">assigned at the first real deployment</span>
+              }
+            </dd>
             <dt>Branch</dt>
             <dd class="mono">{{ p.branch }}</dd>
             <dt>Type</dt>
@@ -28,7 +41,11 @@
             <dt>Build command</dt>
             <dd><code>{{ p.buildCommand ?? '—' }}</code></dd>
             <dt>Start command</dt>
-            <dd><code>{{ p.startCommand }}</code></dd>
+            <dd><code>{{ p.startCommand ?? "the Dockerfile's CMD" }}</code></dd>
+            <dt>Port</dt>
+            <dd class="mono">{{ p.effectivePort }}{{ p.appPort ? '' : ' (default)' }}</dd>
+            <dt>Health check</dt>
+            <dd class="mono">GET {{ p.healthCheckPath ?? '/' }}</dd>
             <dt>Created</dt>
             <dd>{{ p.createdAt | date: 'medium' }}</dd>
             <dt>Updated</dt>
@@ -37,11 +54,20 @@
         </section>
 
         <section class="dh-card">
-          <h2 class="dh-card-title">Environment variables</h2>
-          <p class="dh-muted placeholder">
-            <i class="pi pi-key" aria-hidden="true"></i>
-            Coming in a later milestone. Secret values will be stored encrypted and only their names will ever be shown.
-          </p>
+          <app-project-env-vars [projectId]="p.id" [refresh]="envVersion()" />
+        </section>
+      </div>
+
+      <section class="dh-card">
+        <app-project-public-link [projectId]="p.id" (changed)="onPublicLinkChanged($event)" />
+      </section>
+
+      <div class="dh-grid-2">
+        <section class="dh-card">
+          <app-project-database [projectId]="p.id" (changed)="envVersion.set(envVersion() + 1)" />
+        </section>
+        <section class="dh-card">
+          <app-project-routes [projectId]="p.id" />
         </section>
       </div>
 
@@ -79,7 +105,7 @@
                         @if (d.executionMode === 'SIMULATED') {
                           <app-simulated-badge />
                         } @else {
-                          Real
+                          Docker
                         }
                       </td>
                       <td class="dh-muted">{{ d.createdAt | date: 'MMM d, HH:mm:ss' }}</td>

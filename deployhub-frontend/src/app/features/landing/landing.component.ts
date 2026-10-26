@@ -40,7 +40,7 @@ export class LandingComponent {
     {
       icon: 'pi-chart-line',
       title: 'Built to be measured',
-      text: 'Health endpoints today; queue depth, throughput and latency metrics as the worker architecture lands.',
+      text: 'Liveness and readiness probes, plus queue depth, wait time and throughput metrics for Prometheus.',
     },
   ];
 
@@ -48,8 +48,9 @@ export class LandingComponent {
     { label: 'Projects & simulated deployments', state: 'done' },
     { label: 'Oracle persistence', state: 'done' },
     { label: 'Accounts, login & per-user data', state: 'done' },
-    { label: 'Durable queue & workers', state: 'next' },
-    { label: 'Live SSE logs & rollbacks', state: 'planned' },
-    { label: 'Isolated Docker builds', state: 'planned' },
+    { label: 'Durable queue & workers', state: 'done' },
+    { label: 'Live SSE logs & rollbacks', state: 'done' },
+    { label: 'Isolated Docker builds', state: 'done' },
+    { label: 'Cloud deployment & HTTPS', state: 'next' },
   ];
 }

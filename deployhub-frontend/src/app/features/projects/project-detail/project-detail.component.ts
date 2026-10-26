@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, DestroyRef, OnInit, inject, input, signal } from '@angular/core';
+import { Component, DestroyRef, OnInit, computed, inject, input, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
 import { ConfirmationService, MessageService } from 'primeng/api';
@@ -9,10 +9,14 @@ import { switchMap, timer } from 'rxjs';
 import { PageStateComponent } from '../../../core/components/shared/page-state.component';
 import { SimulatedBadgeComponent } from '../../../core/components/shared/simulated-badge.component';
 import { StatusBadgeComponent } from '../../../core/components/shared/status-badge.component';
-import { ApiError, Deployment, Project } from '../../../core/models/api.models';
+import { ApiError, Deployment, Project, PublicLink } from '../../../core/models/api.models';
 import { DeploymentApiService } from '../../../core/services/api/deployment-api.service';
 import { ProjectApiService } from '../../../core/services/api/project-api.service';
 import { appTypeLabel } from '../../../core/utils/deployment-status';
+import { ProjectDatabaseComponent } from './project-database.component';
+import { ProjectPublicLinkComponent } from './project-public-link.component';
+import { ProjectEnvVarsComponent } from './project-env-vars.component';
+import { ProjectRoutesComponent } from './project-routes.component';
 import { newIdempotencyKey } from '../../../core/utils/idempotency-key';
 import { retryWhileTransient } from '../../../core/utils/polling';
 
@@ -20,7 +24,18 @@ const REFRESH_MS = 4000;
 
 @Component({
   selector: 'app-project-detail',
-  imports: [RouterLink, DatePipe, ButtonModule, PageStateComponent, StatusBadgeComponent, SimulatedBadgeComponent],
+  imports: [
+    RouterLink,
+    DatePipe,
+    ButtonModule,
+    PageStateComponent,
+    StatusBadgeComponent,
+    SimulatedBadgeComponent,
+    ProjectEnvVarsComponent,
+    ProjectRoutesComponent,
+    ProjectDatabaseComponent,
+    ProjectPublicLinkComponent,
+  ],
   templateUrl: './project-detail.component.html',
   styleUrl: './project-detail.component.scss',
 })
@@ -40,6 +55,22 @@ export class ProjectDetailComponent implements OnInit {
   protected readonly loading = signal(true);
   protected readonly error = signal<ApiError | null>(null);
   protected readonly deploying = signal(false);
+  /** Bumped when the database card changed environment variables, so their card reloads. */
+  protected readonly envVersion = signal(0);
+  /**
+   * What "Open app" opens: the public link while it is on, else the project's address on this computer, else the
+   * live deployment's own address (before the project has one).
+   */
+  protected readonly appUrl = computed(() => {
+    const p = this.project();
+    if (p?.publicLinkEnabled && p.publicLink) return p.publicLink;
+    return p?.localUrl ?? this.deployments()?.find((d) => d.status === 'LIVE' && d.appUrl)?.appUrl ?? null;
+  });
+
+  /** The public link card switched the link on or off: "Open app" follows it at once. */
+  protected onPublicLinkChanged(link: PublicLink): void {
+    this.project.update((p) => (p ? { ...p, publicLinkEnabled: link.enabled, publicLink: link.url } : p));
+  }
 
   ngOnInit(): void {
     this.load();
@@ -90,7 +121,7 @@ export class ProjectDetailComponent implements OnInit {
   protected confirmDelete(project: Project): void {
     this.confirm.confirm({
       header: 'Delete project?',
-      message: `This permanently deletes "${project.name}" and its deployment history.`,
+      message: `This permanently deletes "${project.name}", its deployment history and its database (if any).`,
       icon: 'pi pi-exclamation-triangle',
       acceptLabel: 'Delete',
       rejectLabel: 'Cancel',

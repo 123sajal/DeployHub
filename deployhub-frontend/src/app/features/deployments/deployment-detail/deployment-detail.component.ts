@@ -43,6 +43,7 @@ export class DeploymentDetailComponent {
   protected readonly error = signal<ApiError | null>(null);
   protected readonly cancelling = signal(false);
   protected readonly rollingBack = signal(false);
+  protected readonly deleting = signal(false);
   protected readonly deploymentId = computed(() => Number(this.id()));
 
   /** Maps the current status onto the QUEUED → BUILDING → STARTING → LIVE pipeline. */
@@ -165,6 +166,34 @@ export class DeploymentDetailComponent {
       },
       error: (err: ApiError) => {
         this.rollingBack.set(false);
+        this.messages.add({ severity: 'error', summary: err.title, detail: err.detail });
+      },
+    });
+  }
+
+  protected confirmDelete(d: Deployment): void {
+    this.confirm.confirm({
+      header: `Delete deployment #${d.id}?`,
+      message: 'Its logs and status history are deleted too. This cannot be undone.',
+      icon: 'pi pi-trash',
+      acceptLabel: 'Delete',
+      rejectLabel: 'Cancel',
+      acceptButtonProps: { severity: 'danger' },
+      rejectButtonProps: { severity: 'secondary', text: true },
+      accept: () => this.delete(d),
+    });
+  }
+
+  private delete(d: Deployment): void {
+    this.deleting.set(true);
+    this.deploymentApi.delete(d.id).subscribe({
+      next: () => {
+        this.polling?.unsubscribe();
+        this.messages.add({ severity: 'success', summary: 'Deployment deleted', detail: `#${d.id}` });
+        this.router.navigate(['/app/projects', d.projectId]);
+      },
+      error: (err: ApiError) => {
+        this.deleting.set(false);
         this.messages.add({ severity: 'error', summary: err.title, detail: err.detail });
       },
     });

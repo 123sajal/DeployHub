@@ -5,6 +5,8 @@ import com.deployhub.platform.deployment.DeploymentLogWriter;
 import com.deployhub.platform.deployment.DeploymentMetrics;
 import com.deployhub.platform.deployment.DeploymentTransitionService;
 import com.deployhub.platform.exceptions.ConflictException;
+import com.deployhub.platform.execution.DeploymentExecutor;
+import com.deployhub.platform.execution.DeploymentExecutors;
 import com.deployhub.platform.exceptions.FieldValidationException;
 import com.deployhub.platform.exceptions.IdempotencyKeyReuseException;
 import com.deployhub.platform.exceptions.ResourceNotFoundException;
@@ -42,6 +44,8 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.nio.charset.StandardCharsets;
@@ -54,6 +58,7 @@ import java.util.EnumSet;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 
@@ -75,6 +80,7 @@ public class DeploymentService implements IDeploymentService {
     private final ICurrentUserService currentUserService;
     private final IAuditService auditService;
     private final DeploymentMetrics metrics;
+    private final DeploymentExecutors executors;
     private final TransactionTemplate tx;
     private final DeployHubProperties properties;
     private final Clock clock;
@@ -84,8 +90,9 @@ public class DeploymentService implements IDeploymentService {
                              IdempotencyRecordRepository idempotencyRepository, ProjectRepository projectRepository,
                              DeploymentTransitionService transitions, DeploymentLogWriter logWriter,
                              ICurrentUserService currentUserService, IAuditService auditService,
-                             DeploymentMetrics metrics, PlatformTransactionManager transactionManager,
-                             DeployHubProperties properties, Clock clock) {
+                             DeploymentMetrics metrics, DeploymentExecutors executors,
+                             PlatformTransactionManager transactionManager, DeployHubProperties properties,
+                             Clock clock) {
         this.deploymentRepository = deploymentRepository;
         this.deploymentLogRepository = deploymentLogRepository;
         this.jobRepository = jobRepository;
@@ -97,6 +104,7 @@ public class DeploymentService implements IDeploymentService {
         this.currentUserService = currentUserService;
         this.auditService = auditService;
         this.metrics = metrics;
+        this.executors = executors;
         this.tx = new TransactionTemplate(transactionManager);
         this.properties = properties;
         this.clock = clock;
@@ -145,7 +153,9 @@ public class DeploymentService implements IDeploymentService {
                         : "Only a deployment that was live before can be rolled back to (this one is "
                         + source.getStatus() + ")");
             }
-            return new NewDeployment(source.getProject(), source.getCommitRef(), source);
+            // The exact commit that was built, when known; otherwise what was asked for back then.
+            String commit = source.getResolvedCommit() != null ? source.getResolvedCommit() : source.getCommitRef();
+            return new NewDeployment(source.getProject(), commit, source);
         });
     }
 
@@ -172,8 +182,9 @@ public class DeploymentService implements IDeploymentService {
                 Deployment rollbackOf = target.rollbackOf();
                 checkAdmission(userId);
                 Instant now = clock.instant();
+                ExecutionMode mode = properties.execution().mode();
                 Deployment deployment = deploymentRepository.save(Deployment.queue(project, target.commitRef(),
-                        rollbackOf == null ? null : rollbackOf.getId(), ExecutionMode.SIMULATED, now));
+                        rollbackOf == null ? null : rollbackOf.getId(), mode, now));
                 // Same transaction as the deployment: if this commits, the job exists. No lost requests.
                 jobRepository.save(DeploymentJob.enqueue(deployment.getId(), properties.worker().maxAttempts(), now));
                 transitions.recordCreated(deployment, rollbackOf == null ? "Deployment requested"
@@ -182,18 +193,18 @@ public class DeploymentService implements IDeploymentService {
                     idempotencyRepository.save(new IdempotencyRecord(new IdempotencyRecord.Key(userId, key),
                             requestHash, deployment.getId(), now));
                 }
+                String modeNote = mode == ExecutionMode.SIMULATED
+                        ? "Mode: SIMULATED - no code will be built or run."
+                        : "Mode: REAL - it will be built and run in Docker on this machine.";
                 if (rollbackOf == null) {
                     logWriter.info(deployment.getId(), "Deployment queued for " + project.getName() + " (branch "
-                            + project.getBranch() + "). Mode: SIMULATED - no code will be built or run.");
+                            + project.getBranch() + "). " + modeNote);
                     auditService.record(AuditEventType.DEPLOYMENT_CREATED, userId, null, null,
                             "deployment #" + deployment.getId() + " of project #" + project.getId());
                 } else {
                     logWriter.info(deployment.getId(), "Rollback queued for " + project.getName()
-                            + ": redeploying deployment #" + rollbackOf.getId() + " ("
-                            + (rollbackOf.getCommitRef() != null ? "commit " + rollbackOf.getCommitRef()
-                            : "it used the head of branch " + project.getBranch() + "; until real builds record exact"
-                            + " commits (Milestone 6) that branch head is deployed again")
-                            + "). Mode: SIMULATED - no code will be built or run.");
+                            + ": redeploying deployment #" + rollbackOf.getId() + " (" + describeVersion(rollbackOf,
+                            project) + "). " + modeNote);
                     auditService.record(AuditEventType.DEPLOYMENT_ROLLBACK_REQUESTED, userId, null, null,
                             "deployment #" + deployment.getId() + " rolls back to #" + rollbackOf.getId());
                 }
@@ -207,6 +218,17 @@ public class DeploymentService implements IDeploymentService {
             }
             return awaitWinner(userId, key, requestHash).orElseThrow(() -> raced);
         }
+    }
+
+    private static String describeVersion(Deployment source, ProjectMaster project) {
+        if (source.getResolvedCommit() != null) {
+            return "exact commit " + source.getResolvedCommit();
+        }
+        if (source.getCommitRef() != null) {
+            return "commit " + source.getCommitRef();
+        }
+        return "it recorded no exact commit (deployed before real builds), so the current head of branch "
+                + project.getBranch() + " is deployed";
     }
 
     /**
@@ -243,6 +265,45 @@ public class DeploymentService implements IDeploymentService {
         Deployment saved = deploymentRepository.saveAndFlush(deployment);
         metrics.deploymentFinished(DeploymentStatus.CANCELLED, saved.getCreatedAt());
         return DeploymentMapper.toResponse(saved);
+    }
+
+    /**
+     * Its queue job, status history and Idempotency-Key go with it (ON DELETE CASCADE); a rollback that
+     * pointed at it keeps working and just loses the link. Its stored image is removed after the commit,
+     * unless it is still one of the project's recent images kept for rollback.
+     */
+    @Override
+    @Transactional
+    public void delete(Long id) {
+        Deployment deployment = findOwned(id);
+        if (!deployment.canBeDeleted()) {
+            throw new ConflictException(deployment.getStatus() == DeploymentStatus.LIVE
+                    ? "Deployment #" + id + " is live. Deploy a newer version first (or delete the project)."
+                    : "Deployment #" + id + " is still in progress. Cancel it first.");
+        }
+        Long projectId = deployment.getProject().getId();
+        Long userId = currentUserService.currentUserId();
+        String container = deployment.getContainerName();
+        boolean hadImage = deployment.getImageRef() != null;
+        deploymentLogRepository.deleteByDeploymentId(id);
+        deploymentRepository.delete(deployment);
+        deploymentRepository.flush();
+        auditService.record(AuditEventType.DEPLOYMENT_DELETED, userId, null, null,
+                "deployment #" + id + " of project #" + projectId);
+        // Read now (the deleted row is already gone in this transaction); used once the delete has committed.
+        Set<String> keepImages = Set.copyOf(deploymentRepository.findRecentImageRefs(projectId,
+                EnumSet.of(DeploymentStatus.LIVE, DeploymentStatus.SUPERSEDED),
+                Limit.of(Math.max(1, properties.execution().keepImagesPerProject()))));
+        DeploymentExecutor executor = executors.forMode(deployment.getExecutionMode());
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                executor.stop(container); // already stopped when it was replaced; harmless if so
+                if (hadImage && !keepImages.isEmpty()) {
+                    executor.pruneImages(projectId, keepImages);
+                }
+            }
+        });
     }
 
     @Override

@@ -50,8 +50,33 @@ public class ProjectMaster {
     @Column(name = "build_command", length = 500)
     private String buildCommand;
 
-    @Column(name = "start_command", nullable = false, length = 500)
+    /** Optional for Dockerfile projects (the image's own CMD is used); required for every other type. */
+    @Column(name = "start_command", length = 500)
     private String startCommand;
+
+    /** Port the app listens on inside its container; null = the app type's default (see ApplicationType). */
+    @Column(name = "app_port")
+    private Integer appPort;
+
+    /** Path the health check requests; null = "/". */
+    @Column(name = "health_check_path", length = 200)
+    private String healthCheckPath;
+
+    /** The project's fixed address on this machine (http://localhost:publicPort); set on its first real go-live. */
+    @Column(name = "public_port")
+    private Integer publicPort;
+
+    /** "ON" when the project should have a public internet link; null/"OFF" = private (the default). */
+    @Column(name = "public_link_state", length = 10)
+    private String publicLinkState;
+
+    /** The public link as last seen (quick-tunnel links change when the tunnel restarts). */
+    @Column(name = "public_link_url", length = 200)
+    private String publicLinkUrl;
+
+    public boolean isPublicLinkOn() {
+        return "ON".equals(publicLinkState);
+    }
 
     @Column(name = "created_at", nullable = false)
     private Instant createdAt;

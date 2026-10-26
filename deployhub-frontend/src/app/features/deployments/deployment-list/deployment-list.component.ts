@@ -3,6 +3,7 @@ import { Component, DestroyRef, OnInit, inject, input, signal } from '@angular/c
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
+import { ConfirmationService, MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
 import { SelectModule } from 'primeng/select';
 import { Subscription, switchMap, timer } from 'rxjs';
@@ -25,6 +26,7 @@ const REFRESH_MS = 5000;
   styles: `
     .head p { margin: 0.25rem 0 0; }
     .filters { display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; }
+    .row-actions { width: 1%; white-space: nowrap; text-align: right; }
     .reason { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--dh-danger); font-size: 0.82rem; }
   `,
 })
@@ -35,6 +37,8 @@ export class DeploymentListComponent implements OnInit {
 
   private readonly deploymentApi = inject(DeploymentApiService);
   private readonly router = inject(Router);
+  private readonly confirm = inject(ConfirmationService);
+  private readonly messages = inject(MessageService);
   private readonly destroyRef = inject(DestroyRef);
   private polling?: Subscription;
 
@@ -89,6 +93,26 @@ export class DeploymentListComponent implements OnInit {
 
   protected clearProject(): void {
     this.router.navigate([], { queryParams: { projectId: null }, queryParamsHandling: 'merge' }).then(() => this.load());
+  }
+
+  protected confirmDelete(d: Deployment): void {
+    this.confirm.confirm({
+      header: `Delete deployment #${d.id}?`,
+      message: `Deployment #${d.id} of ${d.projectName}, with its logs and status history. This cannot be undone.`,
+      icon: 'pi pi-trash',
+      acceptLabel: 'Delete',
+      rejectLabel: 'Cancel',
+      acceptButtonProps: { severity: 'danger' },
+      rejectButtonProps: { severity: 'secondary', text: true },
+      accept: () =>
+        this.deploymentApi.delete(d.id).subscribe({
+          next: () => {
+            this.messages.add({ severity: 'success', summary: 'Deployment deleted', detail: `#${d.id}` });
+            this.load();
+          },
+          error: (err: ApiError) => this.messages.add({ severity: 'error', summary: err.title, detail: err.detail }),
+        }),
+    });
   }
 
   protected goTo(page: number): void {
