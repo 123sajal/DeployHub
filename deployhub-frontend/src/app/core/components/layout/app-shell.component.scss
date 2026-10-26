@@ -1,0 +1,258 @@
+$sidebar-width: 240px;
+
+.shell {
+  display: grid;
+  grid-template-columns: $sidebar-width 1fr;
+  min-height: 100vh;
+}
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1.25rem 0.9rem;
+  background: var(--dh-bg-elevated);
+  border-right: 1px solid var(--dh-border);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0 0.5rem;
+  color: var(--dh-text);
+  font-weight: 700;
+  font-size: 1.05rem;
+  text-decoration: none;
+}
+
+.logo {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: linear-gradient(135deg, var(--dh-primary-strong), #a855f7);
+  color: #fff;
+  font-size: 0.85rem;
+}
+
+nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  color: var(--dh-text-muted);
+  font-weight: 500;
+  text-decoration: none;
+  transition: background 120ms, color 120ms;
+
+  &:hover {
+    background: var(--dh-surface);
+    color: var(--dh-text);
+  }
+
+  &.active {
+    background: var(--dh-surface-hover);
+    color: var(--dh-text);
+    box-shadow: inset 2px 0 0 var(--dh-primary);
+  }
+}
+
+.sidebar-foot {
+  margin-top: auto;
+  padding: 0.75rem;
+  border: 1px solid var(--dh-border);
+  border-radius: var(--dh-radius);
+  font-size: 0.78rem;
+  color: var(--dh-text-muted);
+}
+
+.env {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dh-text-faint);
+  &.up {
+    background: var(--dh-success);
+  }
+  &.down {
+    background: var(--dh-danger);
+  }
+}
+
+.profiles {
+  margin-top: 0.35rem;
+  color: var(--dh-text-faint);
+}
+
+.main {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1.75rem;
+  background: rgba(11, 13, 18, 0.85);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--dh-border);
+}
+
+.notice {
+  flex: 1;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  color: var(--dh-text-muted);
+  font-size: 0.82rem;
+  .pi {
+    color: var(--dh-warning);
+    margin-top: 0.2rem;
+  }
+  strong {
+    color: var(--dh-warning);
+  }
+}
+
+.avatar {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--dh-surface-hover);
+  border: 1px solid var(--dh-border-strong);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.user {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.who {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  max-width: 200px;
+  strong,
+  small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  small {
+    color: var(--dh-text-muted);
+    font-size: 0.75rem;
+  }
+}
+
+.logout {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--dh-border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dh-text-muted);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+  &:hover {
+    color: var(--dh-text);
+    border-color: var(--dh-border-strong);
+  }
+  &:disabled {
+    opacity: 0.6;
+    cursor: default;
+  }
+}
+
+.menu-btn,
+.scrim {
+  display: none;
+}
+
+.content {
+  padding: 2rem 1.75rem 3rem;
+}
+
+@media (max-width: 900px) {
+  .shell {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: fixed;
+    z-index: 20;
+    left: 0;
+    width: $sidebar-width;
+    transform: translateX(-100%);
+    transition: transform 200ms ease;
+  }
+
+  .shell.open .sidebar {
+    transform: none;
+  }
+
+  .shell.open .scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 15;
+    border: 0;
+    background: rgba(0, 0, 0, 0.5);
+  }
+
+  .menu-btn {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
+    border: 1px solid var(--dh-border);
+    background: var(--dh-surface);
+    color: var(--dh-text);
+    cursor: pointer;
+  }
+
+  .topbar,
+  .content {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .who,
+  .logout .label {
+    display: none;
+  }
+}

@@ -1,0 +1,120 @@
+<div class="dh-page">
+  <a routerLink="/app/deployments" class="back"><i class="pi pi-arrow-left" aria-hidden="true"></i> Deployments</a>
+
+  <app-page-state [loading]="loading()" [error]="error()" (retry)="load()">
+    @if (deployment(); as d) {
+      <header class="head">
+        <div class="title">
+          <h1>Deployment <span class="mono">#{{ d.id }}</span></h1>
+          <div class="meta">
+            <app-status-badge [status]="d.status" />
+            @if (d.executionMode === 'SIMULATED') {
+              <app-simulated-badge />
+            }
+            <span class="dh-muted">of <a [routerLink]="['/app/projects', d.projectId]">{{ d.projectName }}</a></span>
+            @if (d.rollbackOfId) {
+              <span class="rollback-of">
+                <i class="pi pi-history" aria-hidden="true"></i>
+                Rollback to <a [routerLink]="['/app/deployments', d.rollbackOfId]" class="mono">#{{ d.rollbackOfId }}</a>
+              </span>
+            }
+          </div>
+        </div>
+        @if (d.cancellable) {
+          <p-button label="Cancel deployment" icon="pi pi-stop-circle" severity="danger" [outlined]="true"
+                    [loading]="cancelling()" (onClick)="confirmCancel()" />
+        }
+        @if (d.rollbackable) {
+          <p-button label="Roll back to this" icon="pi pi-history" severity="secondary" [outlined]="true"
+                    [loading]="rollingBack()" (onClick)="confirmRollback(d)" />
+        }
+      </header>
+
+      @if (d.failureReason) {
+        <p-message [severity]="d.status === 'CANCELLED' ? 'warn' : 'error'" icon="pi pi-exclamation-circle">
+          <strong>{{ d.status === 'CANCELLED' ? 'Cancelled:' : 'Failed:' }}</strong>&nbsp;{{ d.failureReason }}
+        </p-message>
+      }
+
+      <ol class="pipeline" aria-label="Deployment progress">
+        @for (step of steps(); track step.label) {
+          <li [class]="step.state">
+            <span class="icon" aria-hidden="true">
+              @switch (step.state) {
+                @case ('done') { <i class="pi pi-check"></i> }
+                @case ('failed') { <i class="pi pi-times"></i> }
+                @case ('current') { <i class="pi pi-spin pi-spinner"></i> }
+                @default { <i class="pi pi-circle"></i> }
+              }
+            </span>
+            {{ step.label }}
+            <span class="sr-only">({{ step.state }})</span>
+          </li>
+        }
+      </ol>
+
+      @if (history()?.job; as job) {
+        @if (job.attempt > 1 || job.nextAttemptAt || job.status === 'DEAD') {
+          <section class="dh-card job" [class.dead]="job.status === 'DEAD'" aria-label="Retries">
+            <i class="pi" [class.pi-refresh]="job.status !== 'DEAD'" [class.pi-ban]="job.status === 'DEAD'" aria-hidden="true"></i>
+            <div>
+              <strong>
+                @switch (job.status) {
+                  @case ('DEAD') { Gave up after {{ job.attempt }} attempts }
+                  @case ('PENDING') { Attempt {{ job.attempt }} of {{ job.maxAttempts }} failed, retrying }
+                  @default { Attempt {{ job.attempt }} of {{ job.maxAttempts }} }
+                }
+              </strong>
+              @if (job.nextAttemptAt) {
+                <span class="dh-muted"> · next try at {{ job.nextAttemptAt | date: 'HH:mm:ss' }}</span>
+              }
+              @if (job.lastError) {
+                <p class="dh-muted err">Last error: {{ job.lastError }}</p>
+              }
+            </div>
+          </section>
+        }
+      }
+
+      <section class="dh-card">
+        <dl class="dh-dl times">
+          <dt>Queued</dt>
+          <dd>{{ d.createdAt | date: 'medium' }}</dd>
+          <dt>Started</dt>
+          <dd>{{ d.startedAt ? (d.startedAt | date: 'medium') : '—' }}</dd>
+          <dt>Finished</dt>
+          <dd>{{ d.finishedAt ? (d.finishedAt | date: 'medium') : '—' }}</dd>
+          <dt>Last status change</dt>
+          <dd>{{ d.statusChangedAt | date: 'medium' }}</dd>
+          <dt>Commit</dt>
+          <dd class="mono">{{ d.commitRef ?? 'branch head' }}</dd>
+        </dl>
+      </section>
+
+      @if (history()?.transitions?.length) {
+        <section class="dh-card">
+          <h2 class="dh-card-title">Status history</h2>
+          <ol class="history">
+            @for (t of history()!.transitions; track $index) {
+              <li>
+                <time [attr.datetime]="t.occurredAt">{{ t.occurredAt | date: 'HH:mm:ss.SSS' }}</time>
+                <app-status-badge [status]="t.toStatus" />
+                <span class="who">
+                  {{ actorLabel(t.actor) }}
+                  @if (t.attempt) {
+                    <span class="dh-muted">· attempt {{ t.attempt }}</span>
+                  }
+                </span>
+                @if (t.reason) {
+                  <span class="reason dh-muted">{{ t.reason }}</span>
+                }
+              </li>
+            }
+          </ol>
+        </section>
+      }
+
+      <app-log-viewer [deploymentId]="deploymentId()" />
+    }
+  </app-page-state>
+</div>

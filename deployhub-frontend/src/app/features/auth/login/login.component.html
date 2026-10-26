@@ -1,0 +1,46 @@
+<main class="dh-auth">
+  <form class="dh-auth-card" [formGroup]="form" (ngSubmit)="submit()" novalidate aria-labelledby="login-title">
+    <a class="dh-auth-brand" routerLink="/">
+      <span class="logo" aria-hidden="true"><i class="pi pi-bolt"></i></span> DeployHub
+    </a>
+    <h1 id="login-title">Log in</h1>
+    <p class="sub">Welcome back. Pick up where you left off.</p>
+
+    @if (reason() === 'expired') {
+      <p-message severity="info" text="Your session has ended. Please log in again." />
+    }
+    @if (error(); as message) {
+      <p-message severity="error" [text]="message" role="alert" />
+    }
+
+    <div class="dh-field">
+      <label for="email">Email</label>
+      <input pInputText id="email" type="email" formControlName="email" autocomplete="username"
+             [attr.aria-invalid]="showError('email')" aria-describedby="email-error" />
+      @if (showError('email')) {
+        <small id="email-error" class="dh-error" role="alert">Enter a valid email address</small>
+      }
+    </div>
+
+    <div class="dh-field">
+      <label for="password">Password</label>
+      <div class="dh-password">
+        <input pInputText id="password" [type]="showPassword() ? 'text' : 'password'" formControlName="password"
+               autocomplete="current-password" [attr.aria-invalid]="showError('password')"
+               aria-describedby="password-error" />
+        <button type="button" class="toggle" (click)="showPassword.set(!showPassword())"
+                [attr.aria-label]="showPassword() ? 'Hide password' : 'Show password'"
+                [attr.aria-pressed]="showPassword()">
+          <i class="pi" [class.pi-eye]="!showPassword()" [class.pi-eye-slash]="showPassword()" aria-hidden="true"></i>
+        </button>
+      </div>
+      @if (showError('password')) {
+        <small id="password-error" class="dh-error" role="alert">Enter your password</small>
+      }
+    </div>
+
+    <p-button type="submit" label="Log in" icon="pi pi-sign-in" [loading]="submitting()" fluid />
+
+    <p class="switch">New to DeployHub? <a routerLink="/signup" [queryParams]="{ returnUrl: returnUrl() }">Create an account</a></p>
+  </form>
+</main>

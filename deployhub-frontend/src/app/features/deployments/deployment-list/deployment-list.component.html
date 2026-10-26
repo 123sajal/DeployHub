@@ -1,0 +1,82 @@
+<div class="dh-page">
+  <header class="head">
+    <h1>Deployments</h1>
+    <p class="dh-muted">Every deployment attempt across your projects, newest first.</p>
+  </header>
+
+  <div class="filters">
+    <p-select
+      [ngModel]="status() ?? null"
+      (ngModelChange)="filterStatus($event)"
+      [options]="statusOptions"
+      optionLabel="label"
+      optionValue="value"
+      placeholder="All statuses"
+      [showClear]="true"
+      ariaLabel="Filter by status"
+    />
+    @if (projectId()) {
+      <p-button label="Project #{{ projectId() }}" icon="pi pi-times" iconPos="right" severity="secondary" size="small"
+                [outlined]="true" (onClick)="clearProject()" ariaLabel="Clear project filter" />
+    }
+  </div>
+
+  <section class="dh-card">
+    <app-page-state
+      [loading]="loading()"
+      [error]="error()"
+      [empty]="result()?.items?.length === 0"
+      emptyIcon="pi-cloud-upload"
+      emptyTitle="No deployments found"
+      [emptyText]="status() ? 'No deployments with this status.' : 'Open a project and press Deploy to create one.'"
+      (retry)="load()"
+    >
+      @if (result(); as r) {
+        <div class="dh-table-wrap">
+          <table class="dh-table">
+            <thead>
+              <tr>
+                <th scope="col">Deployment</th>
+                <th scope="col">Project</th>
+                <th scope="col">Status</th>
+                <th scope="col">Mode</th>
+                <th scope="col">Created</th>
+                <th scope="col">Failure reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (d of r.items; track d.id) {
+                <tr>
+                  <td>
+                    <a [routerLink]="['/app/deployments', d.id]" class="mono">#{{ d.id }}</a>
+                    @if (d.rollbackOfId) {
+                      <span class="dh-muted rollback-mark" title="Rollback to #{{ d.rollbackOfId }}"><i class="pi pi-history" aria-hidden="true"></i> #{{ d.rollbackOfId }}</span>
+                    }
+                  </td>
+                  <td><a [routerLink]="['/app/projects', d.projectId]">{{ d.projectName }}</a></td>
+                  <td><app-status-badge [status]="d.status" /></td>
+                  <td>
+                    @if (d.executionMode === 'SIMULATED') {
+                      <app-simulated-badge />
+                    } @else {
+                      Real
+                    }
+                  </td>
+                  <td class="dh-muted">{{ d.createdAt | date: 'MMM d, HH:mm:ss' }}</td>
+                  <td><span class="reason" [title]="d.failureReason ?? ''">{{ d.failureReason ?? '' }}</span></td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        @if (r.totalPages > 1) {
+          <nav class="dh-pager" aria-label="Pagination">
+            <span>Page {{ r.page + 1 }} of {{ r.totalPages }}</span>
+            <p-button icon="pi pi-chevron-left" [text]="true" ariaLabel="Previous page" [disabled]="r.page === 0" (onClick)="goTo(r.page - 1)" />
+            <p-button icon="pi pi-chevron-right" [text]="true" ariaLabel="Next page" [disabled]="r.page + 1 >= r.totalPages" (onClick)="goTo(r.page + 1)" />
+          </nav>
+        }
+      }
+    </app-page-state>
+  </section>
+</div>

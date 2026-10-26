@@ -1,0 +1,69 @@
+<div class="shell" [class.open]="sidebarOpen()">
+  <aside class="sidebar" id="sidebar" aria-label="Main navigation">
+    <a class="brand" routerLink="/">
+      <span class="logo" aria-hidden="true"><i class="pi pi-bolt"></i></span>
+      DeployHub
+    </a>
+    <nav>
+      @for (item of nav; track item.link) {
+        <a [routerLink]="item.link" routerLinkActive="active" class="nav-link">
+          <i class="pi {{ item.icon }}" aria-hidden="true"></i>
+          {{ item.label }}
+        </a>
+      }
+    </nav>
+    <div class="sidebar-foot">
+      <div class="env">
+        @if (health(); as h) {
+          <span class="dot" [class.up]="h.database === 'UP'" aria-hidden="true"></span>
+          <span>API {{ h.status | lowercase }} · {{ h.databaseProduct ?? 'no DB' }}</span>
+        } @else if (apiDown()) {
+          <span class="dot down" aria-hidden="true"></span>
+          <span>API unreachable</span>
+        } @else {
+          <span class="dot" aria-hidden="true"></span>
+          <span>Checking API…</span>
+        }
+      </div>
+      @if (health()?.activeProfiles; as profiles) {
+        <div class="profiles mono">profile: {{ profiles.join(', ') || 'none' }}</div>
+      }
+    </div>
+  </aside>
+
+  <button class="scrim" type="button" aria-label="Close navigation" (click)="toggleSidebar()"></button>
+
+  <div class="main">
+    <header class="topbar">
+      <button
+        class="menu-btn"
+        type="button"
+        aria-controls="sidebar"
+        [attr.aria-expanded]="sidebarOpen()"
+        aria-label="Toggle navigation"
+        (click)="toggleSidebar()"
+      >
+        <i class="pi pi-bars" aria-hidden="true"></i>
+      </button>
+      <div class="notice" role="note">
+        <i class="pi pi-info-circle" aria-hidden="true"></i>
+        <span><strong>Preview:</strong> deployments are simulated, nothing is built or run yet.</span>
+      </div>
+      @if (user(); as u) {
+        <div class="user">
+          <span class="avatar" aria-hidden="true">{{ initials() }}</span>
+          <span class="who">
+            <strong>{{ u.displayName }}</strong>
+            <small>{{ u.email }}</small>
+          </span>
+          <button type="button" class="logout" (click)="logout()" [disabled]="loggingOut()" aria-label="Log out">
+            <i class="pi pi-sign-out" aria-hidden="true"></i><span class="label">Log out</span>
+          </button>
+        </div>
+      }
+    </header>
+    <main class="content">
+      <router-outlet />
+    </main>
+  </div>
+</div>

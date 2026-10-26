@@ -1,0 +1,31 @@
+<section class="viewer dh-card" aria-label="Deployment logs">
+  <header class="bar">
+    <h2 class="dh-card-title">Logs</h2>
+    <span class="state" aria-live="polite">
+      @if (fatalError(); as err) {
+        <span class="err"><i class="pi pi-exclamation-triangle" aria-hidden="true"></i> {{ err.detail }}</span>
+      } @else if (connectionError()) {
+        <span class="err"><i class="pi pi-wifi" aria-hidden="true"></i> Connection lost, reconnecting…</span>
+      } @else if (following()) {
+        <span class="live"><span class="dot" aria-hidden="true"></span> Following
+          <span class="dh-muted">· {{ mode() === 'live' ? 'live stream' : 'polling' }}</span></span>
+      } @else if (finished()) {
+        <span class="dh-muted">Complete · {{ lines().length }} lines</span>
+      }
+    </span>
+    <p-button icon="pi pi-copy" label="Copy" size="small" severity="secondary" [text]="true"
+              [disabled]="lines().length === 0" (onClick)="copy()" />
+  </header>
+
+  <div class="scroller mono" #scroller (scroll)="onScroll(scroller)" tabindex="0" role="log" aria-label="Log output">
+    @for (line of lines(); track line.id) {
+      <div class="line" [attr.data-level]="line.level">
+        <time [attr.datetime]="line.occurredAt">{{ line.occurredAt | date: 'HH:mm:ss.SSS' }}</time>
+        <span class="lvl">{{ line.level }}</span>
+        <span class="msg">{{ line.message }}</span>
+      </div>
+    } @empty {
+      <div class="empty dh-muted">Waiting for log output…</div>
+    }
+  </div>
+</section>

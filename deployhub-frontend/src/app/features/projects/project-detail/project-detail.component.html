@@ -1,0 +1,97 @@
+<div class="dh-page">
+  <a routerLink="/app/projects" class="back"><i class="pi pi-arrow-left" aria-hidden="true"></i> Projects</a>
+
+  <app-page-state [loading]="loading()" [error]="error()" (retry)="load()">
+    @if (project(); as p) {
+      <header class="head">
+        <div>
+          <h1>{{ p.name }}</h1>
+          <a class="mono repo" [href]="p.repositoryUrl" target="_blank" rel="noopener noreferrer">
+            {{ p.repositoryUrl }} <i class="pi pi-external-link" aria-hidden="true"></i>
+          </a>
+        </div>
+        <div class="actions">
+          <p-button label="Delete" icon="pi pi-trash" severity="danger" [text]="true" (onClick)="confirmDelete(p)" />
+          <p-button label="Settings" icon="pi pi-pencil" severity="secondary" [routerLink]="['/app/projects', p.id, 'edit']" />
+          <p-button label="Deploy" icon="pi pi-cloud-upload" [loading]="deploying()" (onClick)="deploy()" />
+        </div>
+      </header>
+
+      <div class="dh-grid-2">
+        <section class="dh-card">
+          <h2 class="dh-card-title">Configuration</h2>
+          <dl class="dh-dl">
+            <dt>Branch</dt>
+            <dd class="mono">{{ p.branch }}</dd>
+            <dt>Type</dt>
+            <dd>{{ appTypeLabel(p.appType) }}</dd>
+            <dt>Build command</dt>
+            <dd><code>{{ p.buildCommand ?? '—' }}</code></dd>
+            <dt>Start command</dt>
+            <dd><code>{{ p.startCommand }}</code></dd>
+            <dt>Created</dt>
+            <dd>{{ p.createdAt | date: 'medium' }}</dd>
+            <dt>Updated</dt>
+            <dd>{{ p.updatedAt | date: 'medium' }}</dd>
+          </dl>
+        </section>
+
+        <section class="dh-card">
+          <h2 class="dh-card-title">Environment variables</h2>
+          <p class="dh-muted placeholder">
+            <i class="pi pi-key" aria-hidden="true"></i>
+            Coming in a later milestone. Secret values will be stored encrypted and only their names will ever be shown.
+          </p>
+        </section>
+      </div>
+
+      <section class="dh-card">
+        <div class="card-head">
+          <h2 class="dh-card-title">Deployment history</h2>
+          <a routerLink="/app/deployments" [queryParams]="{ projectId: p.id }">View all</a>
+        </div>
+        @if (deployments(); as list) {
+          @if (list.length === 0) {
+            <p class="dh-muted">No deployments yet. Press <strong>Deploy</strong> to queue the first one.</p>
+          } @else {
+            <div class="dh-table-wrap">
+              <table class="dh-table">
+                <thead>
+                  <tr>
+                    <th scope="col">Deployment</th>
+                    <th scope="col">Status</th>
+                    <th scope="col">Mode</th>
+                    <th scope="col">Created</th>
+                    <th scope="col">Finished</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @for (d of list; track d.id) {
+                    <tr>
+                      <td>
+                        <a [routerLink]="['/app/deployments', d.id]" class="mono">#{{ d.id }}</a>
+                        @if (d.rollbackOfId) {
+                          <span class="dh-muted rollback-mark" title="Rollback to #{{ d.rollbackOfId }}"><i class="pi pi-history" aria-hidden="true"></i> #{{ d.rollbackOfId }}</span>
+                        }
+                      </td>
+                      <td><app-status-badge [status]="d.status" /></td>
+                      <td>
+                        @if (d.executionMode === 'SIMULATED') {
+                          <app-simulated-badge />
+                        } @else {
+                          Real
+                        }
+                      </td>
+                      <td class="dh-muted">{{ d.createdAt | date: 'MMM d, HH:mm:ss' }}</td>
+                      <td class="dh-muted">{{ d.finishedAt ? (d.finishedAt | date: 'HH:mm:ss') : '—' }}</td>
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+          }
+        }
+      </section>
+    }
+  </app-page-state>
+</div>

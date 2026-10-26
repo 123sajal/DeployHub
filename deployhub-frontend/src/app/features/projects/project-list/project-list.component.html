@@ -1,0 +1,75 @@
+<div class="dh-page">
+  <header class="head">
+    <div>
+      <h1>Projects</h1>
+      <p class="dh-muted">Repositories DeployHub knows how to deploy.</p>
+    </div>
+    <p-button label="New project" icon="pi pi-plus" routerLink="/app/projects/new" />
+  </header>
+
+  <div class="filters">
+    <p-iconfield class="search">
+      <p-inputicon styleClass="pi pi-search" />
+      <input pInputText type="search" [formControl]="search" placeholder="Search by name or repository" aria-label="Search projects" fluid />
+    </p-iconfield>
+    <p-select
+      [formControl]="appType"
+      [options]="appTypeOptions"
+      optionLabel="label"
+      optionValue="value"
+      placeholder="All application types"
+      [showClear]="true"
+      ariaLabel="Filter by application type"
+      styleClass="type-filter"
+    />
+  </div>
+
+  <section class="dh-card">
+    <app-page-state
+      [loading]="loading()"
+      [error]="error()"
+      [empty]="result()?.items?.length === 0"
+      emptyIcon="pi-folder-open"
+      [emptyTitle]="hasFilters ? 'No matching projects' : 'No projects yet'"
+      [emptyText]="hasFilters ? 'Try a different search or filter.' : 'Create your first project to start deploying.'"
+      (retry)="reload()"
+    >
+      @if (!hasFilters) {
+        <p-button emptyAction label="Create project" icon="pi pi-plus" routerLink="/app/projects/new" />
+      }
+      @if (result(); as r) {
+        <div class="dh-table-wrap">
+          <table class="dh-table">
+            <thead>
+              <tr>
+                <th scope="col">Name</th>
+                <th scope="col">Repository</th>
+                <th scope="col">Branch</th>
+                <th scope="col">Type</th>
+                <th scope="col">Updated</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (p of r.items; track p.id) {
+                <tr>
+                  <td><a [routerLink]="['/app/projects', p.id]" class="name">{{ p.name }}</a></td>
+                  <td class="repo mono dh-muted">{{ p.repositoryUrl.replace('https://', '') }}</td>
+                  <td class="mono"><i class="pi pi-share-alt" aria-hidden="true"></i> {{ p.branch }}</td>
+                  <td>{{ appTypeLabel(p.appType) }}</td>
+                  <td class="dh-muted">{{ p.updatedAt | date: 'MMM d, y' }}</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+        @if (r.totalPages > 1) {
+          <nav class="dh-pager" aria-label="Pagination">
+            <span>Page {{ r.page + 1 }} of {{ r.totalPages }} · {{ r.totalElements }} projects</span>
+            <p-button icon="pi pi-chevron-left" [text]="true" ariaLabel="Previous page" [disabled]="r.page === 0" (onClick)="goTo(r.page - 1)" />
+            <p-button icon="pi pi-chevron-right" [text]="true" ariaLabel="Next page" [disabled]="r.page + 1 >= r.totalPages" (onClick)="goTo(r.page + 1)" />
+          </nav>
+        }
+      }
+    </app-page-state>
+  </section>
+</div>

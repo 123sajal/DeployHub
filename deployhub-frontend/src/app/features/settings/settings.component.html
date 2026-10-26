@@ -1,0 +1,65 @@
+<div class="dh-page">
+  <header class="head">
+    <h1>Settings</h1>
+    <p class="dh-muted">Account, integrations and platform status.</p>
+  </header>
+
+  <div class="dh-grid-2">
+    <section class="dh-card">
+      <h2 class="dh-card-title">Profile</h2>
+      @if (user(); as u) {
+        <div class="dh-field">
+          <label for="display-name">Display name</label>
+          <input pInputText id="display-name" [value]="u.displayName" disabled />
+        </div>
+        <div class="dh-field">
+          <label for="email">Email</label>
+          <input pInputText id="email" [value]="u.email" disabled />
+        </div>
+      }
+      <p class="dh-muted">
+        <i class="pi pi-info-circle" aria-hidden="true"></i>
+        Editing your profile and changing your password are coming in a later update.
+      </p>
+    </section>
+
+    <section class="dh-card">
+      <h2 class="dh-card-title">Platform status</h2>
+      @if (health(); as h) {
+        <dl class="dh-dl">
+          <dt>API</dt>
+          <dd><p-tag [severity]="h.status === 'UP' ? 'success' : 'danger'" [value]="h.status" /></dd>
+          <dt>Database</dt>
+          <dd>{{ h.database }} · {{ h.databaseProduct ?? 'unknown' }}</dd>
+          <dt>Profile</dt>
+          <dd class="mono">{{ h.activeProfiles.join(', ') || 'none' }}</dd>
+          <dt>Deployments</dt>
+          <dd>{{ h.deploymentExecutionMode }}</dd>
+          <dt>Checked</dt>
+          <dd>{{ h.timestamp | date: 'medium' }}</dd>
+        </dl>
+      } @else if (healthError(); as err) {
+        <p class="dh-muted" role="alert">{{ err.detail }}</p>
+      }
+      <p-button label="Re-check" icon="pi pi-refresh" size="small" severity="secondary" [text]="true" (onClick)="checkHealth()" />
+    </section>
+  </div>
+
+  <section class="dh-card soon">
+    <div>
+      <h2 class="dh-card-title">GitHub integration</h2>
+      <p class="dh-muted">Connect a GitHub account to deploy private repositories and trigger deploys on push.</p>
+    </div>
+    <p-button label="Connect GitHub" icon="pi pi-github" [disabled]="true" severity="secondary" />
+  </section>
+
+  <section class="dh-card soon">
+    <div>
+      <h2 class="dh-card-title">Environment variables</h2>
+      <p class="dh-muted">
+        Per-project variables will be encrypted at rest. The API will only ever return their names, never their values.
+      </p>
+    </div>
+    <p-tag value="Planned" severity="secondary" />
+  </section>
+</div>

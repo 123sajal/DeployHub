@@ -1,0 +1,103 @@
+.viewer {
+  padding: 0;
+  overflow: hidden;
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid var(--dh-border);
+  .dh-card-title {
+    margin: 0;
+  }
+  .state {
+    flex: 1;
+    font-size: 0.8rem;
+  }
+}
+
+.live {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--dh-success);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: blink 1.2s infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.err {
+  color: var(--dh-warning);
+}
+
+.scroller {
+  max-height: 460px;
+  min-height: 180px;
+  overflow: auto;
+  padding: 0.75rem 0;
+  background: #07080c;
+  font-size: 0.8rem;
+  line-height: 1.65;
+}
+
+.line {
+  display: grid;
+  grid-template-columns: 6.5rem 3.5rem 1fr;
+  gap: 0.75rem;
+  padding: 0 1rem;
+  &:hover {
+    background: rgba(255, 255, 255, 0.03);
+  }
+  time {
+    color: var(--dh-text-faint);
+  }
+  .lvl {
+    color: var(--dh-info);
+  }
+  .msg {
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  &[data-level='WARN'] .lvl,
+  &[data-level='WARN'] .msg {
+    color: var(--dh-warning);
+  }
+  &[data-level='ERROR'] {
+    background: rgba(248, 113, 113, 0.08);
+    .lvl,
+    .msg {
+      color: var(--dh-danger);
+    }
+  }
+}
+
+.empty {
+  padding: 1rem;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dot {
+    animation: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .line {
+    grid-template-columns: 1fr;
+    gap: 0;
+    padding-bottom: 0.4rem;
+  }
+}

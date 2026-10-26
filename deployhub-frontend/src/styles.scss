@@ -1,0 +1,275 @@
+// Design tokens. PrimeNG components get their colors from the Aura preset (core/utils/theme.ts);
+// these variables cover DeployHub's own layout and cards.
+:root {
+  --dh-bg: #0b0d12;
+  --dh-bg-elevated: #11141b;
+  --dh-surface: #161a23;
+  --dh-surface-hover: #1c2130;
+  --dh-border: #232838;
+  --dh-border-strong: #2e3448;
+  --dh-text: #e6e8ee;
+  --dh-text-muted: #8b92a7;
+  --dh-text-faint: #5d6478;
+  --dh-primary: #818cf8;
+  --dh-primary-strong: #6366f1;
+  --dh-success: #34d399;
+  --dh-warning: #fbbf24;
+  --dh-danger: #f87171;
+  --dh-info: #60a5fa;
+  --dh-radius: 10px;
+  --dh-radius-lg: 14px;
+  --dh-font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --dh-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  color-scheme: dark;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--dh-bg);
+  color: var(--dh-text);
+  font-family: var(--dh-font);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a {
+  color: var(--dh-primary);
+  text-decoration: none;
+  &:hover {
+    text-decoration: underline;
+  }
+}
+
+h1,
+h2,
+h3 {
+  margin: 0;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+code,
+.mono {
+  font-family: var(--dh-mono);
+  font-size: 0.92em;
+}
+
+:focus-visible {
+  outline: 2px solid var(--dh-primary);
+  outline-offset: 2px;
+}
+
+// ---- shared building blocks used by feature pages ----
+.dh-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  max-width: 1200px;
+}
+
+.dh-card {
+  background: var(--dh-surface);
+  border: 1px solid var(--dh-border);
+  border-radius: var(--dh-radius-lg);
+  padding: 1.25rem;
+}
+
+.dh-card-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 0 0 1rem;
+}
+
+.dh-muted {
+  color: var(--dh-text-muted);
+}
+
+.dh-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 1.25rem;
+}
+
+.dh-table {
+  width: 100%;
+  border-collapse: collapse;
+  th,
+  td {
+    text-align: left;
+    padding: 0.7rem 0.75rem;
+    border-bottom: 1px solid var(--dh-border);
+    vertical-align: middle;
+  }
+  th {
+    color: var(--dh-text-muted);
+    font-weight: 500;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  tbody tr {
+    transition: background 120ms;
+    &:hover {
+      background: var(--dh-surface-hover);
+    }
+  }
+  tbody tr:last-child td {
+    border-bottom: none;
+  }
+}
+
+.dh-table-wrap {
+  overflow-x: auto;
+}
+
+.dh-dl {
+  display: grid;
+  grid-template-columns: minmax(120px, max-content) 1fr;
+  gap: 0.6rem 1.25rem;
+  margin: 0;
+  dt {
+    color: var(--dh-text-muted);
+  }
+  dd {
+    margin: 0;
+    word-break: break-word;
+  }
+}
+
+.dh-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  label {
+    font-weight: 500;
+  }
+  input {
+    width: 100%;
+  }
+  .dh-hint {
+    color: var(--dh-text-faint);
+    font-size: 0.82rem;
+  }
+  .dh-error {
+    color: var(--dh-danger);
+    font-size: 0.82rem;
+  }
+}
+
+.dh-pager {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  color: var(--dh-text-muted);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+// ---- login / sign-up pages ----
+.dh-auth {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 2rem 1rem;
+  background: radial-gradient(600px 300px at 50% -80px, rgba(99, 102, 241, 0.25), transparent 70%), var(--dh-bg);
+}
+
+.dh-auth-card {
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+  padding: 2rem;
+  background: var(--dh-surface);
+  border: 1px solid var(--dh-border);
+  border-radius: var(--dh-radius-lg);
+  box-shadow: 0 30px 80px -30px rgba(99, 102, 241, 0.35);
+
+  h1 {
+    font-size: 1.5rem;
+  }
+  .sub {
+    margin: -0.6rem 0 0.2rem;
+    color: var(--dh-text-muted);
+  }
+  .switch {
+    text-align: center;
+    color: var(--dh-text-muted);
+    margin: 0;
+  }
+}
+
+.dh-auth-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--dh-text);
+  font-weight: 700;
+  font-size: 1.05rem;
+  text-decoration: none;
+  margin-bottom: 0.5rem;
+  .logo {
+    display: grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    background: linear-gradient(135deg, var(--dh-primary-strong), #a855f7);
+    color: #fff;
+    font-size: 0.85rem;
+  }
+}
+
+.dh-password {
+  position: relative;
+  input {
+    padding-right: 2.75rem;
+  }
+  .toggle {
+    position: absolute;
+    right: 0.35rem;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 2.2rem;
+    height: 2.2rem;
+    display: grid;
+    place-items: center;
+    border: 0;
+    background: transparent;
+    color: var(--dh-text-muted);
+    border-radius: 6px;
+    cursor: pointer;
+    &:hover {
+      color: var(--dh-text);
+    }
+  }
+}
+
+/* "Rollback to #N" marker next to a deployment id in tables (Milestone 5). */
+.rollback-mark {
+  margin-left: 0.35rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  .pi {
+    font-size: 0.72rem;
+  }
+}

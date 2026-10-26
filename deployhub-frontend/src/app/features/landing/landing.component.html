@@ -1,0 +1,122 @@
+<div class="landing">
+  <header class="nav">
+    <a class="brand" routerLink="/">
+      <span class="logo" aria-hidden="true"><i class="pi pi-bolt"></i></span>
+      DeployHub
+    </a>
+    <nav aria-label="Landing">
+      <a href="#features">Features</a>
+      <a href="#architecture">Architecture</a>
+      <a routerLink="/login">Log in</a>
+    </nav>
+  </header>
+
+  <section class="hero">
+    <span class="eyebrow"><span class="pip"></span> Preview · simulated deployments</span>
+    <h1>Deploy your code.<br /><span class="grad">Ship with confidence.</span></h1>
+    <p class="lead">
+      DeployHub is a learning-grade deployment platform in the spirit of Render, Railway and Vercel. Connect a
+      repository and queue a deployment, then follow it through a well-defined lifecycle, with logs you can trust.
+    </p>
+    <div class="cta">
+      <p-button label="Get Started" icon="pi pi-arrow-right" iconPos="right" size="large" routerLink="/signup" />
+      <p-button label="Explore Dashboard" severity="secondary" [outlined]="true" size="large" routerLink="/app/dashboard" />
+    </div>
+    <p class="honest">Builds are simulated in this milestone. No repository code is cloned or executed yet.</p>
+  </section>
+
+  <section class="preview" aria-label="Product preview">
+    <div class="window">
+      <div class="window-bar">
+        <span></span><span></span><span></span>
+        <code>deployhub · petclinic · deployment #42</code>
+      </div>
+      <div class="window-body">
+        <div class="timeline">
+          <div class="step done"><i class="pi pi-check"></i> Queued</div>
+          <div class="step done"><i class="pi pi-check"></i> Building</div>
+          <div class="step done"><i class="pi pi-check"></i> Starting</div>
+          <div class="step live"><i class="pi pi-circle-fill"></i> Live</div>
+        </div>
+        <pre class="logs mono"><span class="t">12:04:01</span> <span class="i">INFO</span>  Worker picked up the deployment
+<span class="t">12:04:01</span> <span class="i">INFO</span>  Cloning github.com/acme/petclinic &#64; main
+<span class="t">12:04:04</span> <span class="i">INFO</span>  Running build: API_TOKEN=*** ./mvnw package
+<span class="t">12:04:31</span> <span class="i">INFO</span>  Build finished
+<span class="t">12:04:33</span> <span class="i">INFO</span>  Health check passed
+<span class="t">12:04:33</span> <span class="s">LIVE</span>  Deployment is live</pre>
+      </div>
+    </div>
+  </section>
+
+  <section id="features" class="section">
+    <h2>Engineered like a real platform</h2>
+    <p class="sub">The system design challenges are implemented and tested, not just described.</p>
+    <div class="features">
+      @for (f of features; track f.title) {
+        <article class="feature">
+          <i class="pi {{ f.icon }}" aria-hidden="true"></i>
+          <h3>{{ f.title }}</h3>
+          <p>{{ f.text }}</p>
+        </article>
+      }
+    </div>
+  </section>
+
+  <section id="architecture" class="section">
+    <h2>Architecture</h2>
+    <p class="sub">Grown one milestone at a time. Nothing is added just to make the diagram look impressive.</p>
+    <div class="arch">
+      <div class="arch-col">
+        <h3>Today</h3>
+        <div class="flow">
+          <div class="box">Angular SPA</div>
+          <i class="pi pi-arrow-down" aria-hidden="true"></i>
+          <div class="box primary">Spring Boot control-plane API<small>projects · deployments · logs</small></div>
+          <i class="pi pi-arrow-down" aria-hidden="true"></i>
+          <div class="box">H2 (local) → Oracle Autonomous DB</div>
+          <div class="box dashed">In-process simulated worker</div>
+        </div>
+      </div>
+      <div class="arch-col">
+        <h3>Target</h3>
+        <div class="flow">
+          <div class="box">Angular SPA · HTTPS reverse proxy</div>
+          <i class="pi pi-arrow-down" aria-hidden="true"></i>
+          <div class="box primary">Control-plane API<small>auth · idempotency · state machine</small></div>
+          <i class="pi pi-arrow-down" aria-hidden="true"></i>
+          <div class="box">Durable job queue</div>
+          <i class="pi pi-arrow-down" aria-hidden="true"></i>
+          <div class="box">Independent workers<small>leases · retries · heartbeats</small></div>
+          <i class="pi pi-arrow-down" aria-hidden="true"></i>
+          <div class="box">Isolated, resource-limited build containers</div>
+        </div>
+      </div>
+      <div class="arch-col">
+        <h3>Roadmap</h3>
+        <ul class="roadmap">
+          @for (r of roadmap; track r.label) {
+            <li [class]="r.state">
+              <i
+                class="pi"
+                [class.pi-check-circle]="r.state === 'done'"
+                [class.pi-arrow-circle-right]="r.state === 'next'"
+                [class.pi-circle]="r.state === 'planned'"
+                aria-hidden="true"
+              ></i>
+              {{ r.label }}
+              <span class="sr-only">({{ r.state }})</span>
+            </li>
+          }
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <footer class="footer">
+    <span>© {{ year }} DeployHub, a portfolio project.</span>
+    <span class="links">
+      <a routerLink="/app/dashboard">Dashboard</a>
+      <a href="/swagger-ui/index.html" target="_blank" rel="noopener">API docs</a>
+    </span>
+  </footer>
+</div>

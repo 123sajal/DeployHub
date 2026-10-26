@@ -1,0 +1,88 @@
+<div class="dh-page narrow">
+  <header>
+    <a [routerLink]="isEdit() ? ['/app/projects', id()] : '/app/projects'" class="back">
+      <i class="pi pi-arrow-left" aria-hidden="true"></i> Back
+    </a>
+    <h1>{{ isEdit() ? 'Edit project' : 'New project' }}</h1>
+    <p class="dh-muted">
+      DeployHub records how your app is built and started. In this milestone nothing is executed: deployments are
+      simulated.
+    </p>
+  </header>
+
+  <app-page-state [loading]="loading()" [error]="loadError()" (retry)="loadProject()">
+    <form class="dh-card form" [formGroup]="form" (ngSubmit)="submit()" novalidate>
+      <div class="dh-field">
+        <label for="name">Project name</label>
+        <input pInputText id="name" formControlName="name" placeholder="my-api" autocomplete="off"
+               [attr.aria-invalid]="showError('name')" aria-describedby="name-hint name-error" />
+        <small id="name-hint" class="dh-hint">Lowercase letters, digits and hyphens. Unique per account.</small>
+        @if (showError('name')) {
+          <small id="name-error" class="dh-error" role="alert">{{ errorText('name') }}</small>
+        }
+      </div>
+
+      <div class="dh-field">
+        <label for="repositoryUrl">Repository URL</label>
+        <input pInputText id="repositoryUrl" formControlName="repositoryUrl" type="url"
+               placeholder="https://github.com/owner/repo" autocomplete="off"
+               [attr.aria-invalid]="showError('repositoryUrl')" aria-describedby="repo-hint repo-error" />
+        <small id="repo-hint" class="dh-hint">Public https URL on github.com, gitlab.com or bitbucket.org.</small>
+        @if (showError('repositoryUrl')) {
+          <small id="repo-error" class="dh-error" role="alert">{{ errorText('repositoryUrl') }}</small>
+        }
+      </div>
+
+      <div class="row">
+        <div class="dh-field">
+          <label for="branch">Branch</label>
+          <input pInputText id="branch" formControlName="branch" class="mono"
+                 [attr.aria-invalid]="showError('branch')" aria-describedby="branch-error" />
+          @if (showError('branch')) {
+            <small id="branch-error" class="dh-error" role="alert">{{ errorText('branch') }}</small>
+          }
+        </div>
+        <div class="dh-field">
+          <label for="appType">Application type</label>
+          <p-select inputId="appType" formControlName="appType" [options]="appTypeOptions" optionLabel="label"
+                    optionValue="value" placeholder="Choose a type" [invalid]="showError('appType')" fluid />
+          @if (showError('appType')) {
+            <small class="dh-error" role="alert">{{ errorText('appType') }}</small>
+          }
+        </div>
+      </div>
+
+      <div class="dh-field">
+        <label for="buildCommand">Build command <span class="dh-muted">(optional)</span></label>
+        <input pInputText id="buildCommand" formControlName="buildCommand" class="mono" placeholder="npm run build"
+               aria-describedby="build-hint" />
+        <small id="build-hint" class="dh-hint">
+          Never put secrets here. Environment variables will get their own encrypted store.
+        </small>
+        @if (showError('buildCommand')) {
+          <small class="dh-error" role="alert">{{ errorText('buildCommand') }}</small>
+        }
+      </div>
+
+      <div class="dh-field">
+        <label for="startCommand">Start command</label>
+        <input pInputText id="startCommand" formControlName="startCommand" class="mono" placeholder="node server.js"
+               [attr.aria-invalid]="showError('startCommand')" aria-describedby="start-error" />
+        @if (showError('startCommand')) {
+          <small id="start-error" class="dh-error" role="alert">{{ errorText('startCommand') }}</small>
+        }
+      </div>
+
+      @if (submitError(); as message) {
+        <p-message severity="error" [text]="message" />
+      }
+
+      <div class="actions">
+        <p-button label="Cancel" severity="secondary" [text]="true"
+                  [routerLink]="isEdit() ? ['/app/projects', id()] : '/app/projects'" />
+        <p-button type="submit" [label]="isEdit() ? 'Save changes' : 'Create project'" icon="pi pi-check"
+                  [loading]="saving()" />
+      </div>
+    </form>
+  </app-page-state>
+</div>

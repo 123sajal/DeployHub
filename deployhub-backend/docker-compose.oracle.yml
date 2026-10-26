@@ -1,0 +1,24 @@
+# Local Oracle Database 23ai Free for development - no Oracle Cloud account needed.
+#   docker compose -f docker-compose.oracle.yml up -d
+# Reads DB_USERNAME / DB_PASSWORD from deployhub-backend/.env (git-ignored), so no password lives in git.
+services:
+  oracle:
+    image: gvenzl/oracle-free:23-slim-faststart
+    container_name: deployhub-oracle
+    ports:
+      - "127.0.0.1:1521:1521"   # reachable only from this Mac, not from other devices on your Wi-Fi
+    environment:
+      ORACLE_RANDOM_PASSWORD: "true"          # SYS/SYSTEM get a random password; the app never uses them
+      APP_USER: ${DB_USERNAME:?set DB_USERNAME in .env}
+      APP_USER_PASSWORD: ${DB_PASSWORD:?set DB_PASSWORD in .env}
+    volumes:
+      - deployhub-oracle-data:/opt/oracle/oradata   # data survives container restarts
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+
+volumes:
+  deployhub-oracle-data:

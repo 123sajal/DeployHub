@@ -1,0 +1,109 @@
+<div class="dh-page">
+  <header class="head">
+    <div>
+      <h1>Dashboard</h1>
+      <p class="dh-muted">An overview of your projects and deployments.</p>
+    </div>
+    <p-button label="New project" icon="pi pi-plus" routerLink="/app/projects/new" />
+  </header>
+
+  <app-page-state [loading]="loading()" [error]="error()" (retry)="load()">
+    @if (summary(); as s) {
+      <section class="stats" aria-label="Deployment statistics">
+        @for (stat of stats(); track stat.label) {
+          <div class="stat dh-card" [attr.data-tone]="stat.tone">
+            <i class="pi {{ stat.icon }}" aria-hidden="true"></i>
+            <span class="value">{{ stat.value }}</span>
+            <span class="label">{{ stat.label }}</span>
+          </div>
+        }
+      </section>
+
+      @if (metrics(); as m) {
+        <section class="dh-card metrics" aria-label="Pipeline metrics, last hour">
+          <div class="card-head">
+            <h2 class="dh-card-title">Last {{ m.windowMinutes }} minutes</h2>
+            <span class="dh-muted small">Your deployments · queue is platform-wide</span>
+          </div>
+          <dl class="metric-grid">
+            <div>
+              <dt>Queue</dt>
+              <dd>
+                <strong>{{ m.platformQueue.waiting }}</strong> waiting
+                <span class="dh-muted">· {{ m.platformQueue.running }} running · {{ m.platformQueue.retryScheduled }} retrying</span>
+              </dd>
+            </div>
+            <div>
+              <dt>Avg wait for a worker</dt>
+              <dd><strong>{{ duration(m.avgQueueWaitMs) }}</strong> <span class="dh-muted">· max {{ duration(m.maxQueueWaitMs) }}</span></dd>
+            </div>
+            <div>
+              <dt>Finished</dt>
+              <dd>
+                <strong>{{ m.finished }}</strong>
+                <span class="dh-muted">· {{ m.succeeded }} live · {{ m.failed }} failed · {{ m.cancelled }} cancelled</span>
+              </dd>
+            </div>
+            <div>
+              <dt>Success rate</dt>
+              <dd><strong>{{ percent(m.successRate) }}</strong></dd>
+            </div>
+          </dl>
+        </section>
+      }
+
+      <div class="cols">
+        <section class="dh-card">
+          <div class="card-head">
+            <h2 class="dh-card-title">Recent activity</h2>
+            <a routerLink="/app/deployments">View all</a>
+          </div>
+          @if (s.recentDeployments.length === 0) {
+            <div class="empty">
+              <i class="pi pi-cloud-upload" aria-hidden="true"></i>
+              <p>No deployments yet. Create a project, then press <strong>Deploy</strong>.</p>
+            </div>
+          } @else {
+            <ul class="activity">
+              @for (d of s.recentDeployments; track d.id) {
+                <li>
+                  <a [routerLink]="['/app/deployments', d.id]" class="row">
+                    <app-status-badge [status]="d.status" />
+                    <span class="what">
+                      <strong>{{ d.projectName }}</strong>
+                      <span class="dh-muted mono">#{{ d.id }}{{ d.commitRef ? ' · ' + d.commitRef : '' }}</span>
+                    </span>
+                    @if (d.executionMode === 'SIMULATED') {
+                      <app-simulated-badge />
+                    }
+                    <time class="dh-muted" [attr.datetime]="d.createdAt">{{ d.createdAt | date: 'MMM d, HH:mm:ss' }}</time>
+                  </a>
+                </li>
+              }
+            </ul>
+          }
+        </section>
+
+        <section class="dh-card quick">
+          <h2 class="dh-card-title">Get started</h2>
+          <a class="action" routerLink="/app/projects/new">
+            <i class="pi pi-plus-circle" aria-hidden="true"></i>
+            <span><strong>Create a project</strong><small>Point DeployHub at a GitHub, GitLab or Bitbucket repository.</small></span>
+          </a>
+          <a class="action" routerLink="/app/projects">
+            <i class="pi pi-folder-open" aria-hidden="true"></i>
+            <span><strong>Browse projects</strong><small>Search, filter and deploy existing projects.</small></span>
+          </a>
+          <a class="action" routerLink="/app/deployments" [queryParams]="{ status: 'FAILED' }">
+            <i class="pi pi-exclamation-circle" aria-hidden="true"></i>
+            <span><strong>Inspect failures</strong><small>{{ s.failed }} failed · {{ s.cancelled }} cancelled</small></span>
+          </a>
+          <p class="tip dh-muted">
+            <i class="pi pi-lightbulb" aria-hidden="true"></i>
+            Tip: put the word <code>fail</code> in a build command to simulate a failed build.
+          </p>
+        </section>
+      </div>
+    }
+  </app-page-state>
+</div>

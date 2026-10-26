@@ -1,0 +1,141 @@
+.back {
+  color: var(--dh-text-muted);
+  font-size: 0.85rem;
+}
+
+.head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 1.25rem;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.5rem;
+}
+
+p-message {
+  display: block;
+  margin-bottom: 1.25rem;
+}
+
+.pipeline {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 1.25rem;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.5rem;
+
+  li {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 0.9rem;
+    border: 1px solid var(--dh-border);
+    border-radius: var(--dh-radius);
+    background: var(--dh-surface);
+    color: var(--dh-text-faint);
+    font-weight: 500;
+  }
+
+  .icon .pi {
+    font-size: 0.8rem;
+  }
+
+  .done {
+    color: var(--dh-text);
+    .pi {
+      color: var(--dh-success);
+    }
+  }
+
+  .current {
+    color: var(--dh-text);
+    border-color: var(--dh-info);
+    .pi {
+      color: var(--dh-info);
+    }
+  }
+
+  .failed {
+    color: var(--dh-danger);
+    border-color: rgba(248, 113, 113, 0.5);
+  }
+}
+
+.dh-card {
+  margin-bottom: 1.25rem;
+}
+
+@media (max-width: 600px) {
+  .pipeline {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.job {
+  display: flex;
+  gap: 0.75rem;
+  border-color: rgba(251, 191, 36, 0.45);
+  .pi {
+    color: var(--dh-warning);
+    margin-top: 0.2rem;
+  }
+  &.dead {
+    border-color: rgba(248, 113, 113, 0.5);
+    .pi {
+      color: var(--dh-danger);
+    }
+  }
+  .err {
+    margin: 0.3rem 0 0;
+    font-size: 0.85rem;
+  }
+}
+
+.history {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  li {
+    display: grid;
+    grid-template-columns: 7rem auto 1fr;
+    align-items: center;
+    gap: 0.4rem 0.9rem;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid var(--dh-border);
+    &:last-child {
+      border-bottom: none;
+    }
+  }
+  time {
+    color: var(--dh-text-faint);
+    font-family: var(--dh-mono);
+    font-size: 0.8rem;
+  }
+  .reason {
+    grid-column: 2 / -1;
+    font-size: 0.82rem;
+  }
+}
+
+@media (max-width: 600px) {
+  .history li {
+    grid-template-columns: 1fr;
+  }
+}
+
+.rollback-of {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--dh-text-muted);
+  font-size: 0.85rem;
+}

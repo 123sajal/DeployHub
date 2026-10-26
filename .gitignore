@@ -1,0 +1,12 @@
+# Secrets and Oracle wallets must never be committed
+.env
+*.env
+!.env.example
+wallet/
+Wallet_*/
+*.p12
+*.jks
+cwallet.sso
+ewallet.p12
+
+.DS_Store
