@@ -120,6 +120,7 @@ on real Oracle Database Free with Hibernate schema validation. Autonomous Databa
 | Routes: send a path (e.g. `/api`) of a project's address to another project's live app (no CORS needed) | ✅ Milestone 6 |
 | One-click MySQL database per project on a shared server; connection details set as environment variables | ✅ Milestone 6. ⚠️ No backups yet |
 | Public link per project (opt-in): an https link anyone can open, via a free Cloudflare quick tunnel; "Open app" uses it | ✅ Milestone 6. 🟡 Link changes when the tunnel restarts; works while this Mac is on |
+| Forgot password: a 6-digit code by email (Gmail SMTP), then a new password | ✅ 2026-10-26. 🟡 Without Gmail settings the code is written to the backend log |
 | Private repositories, build on push (webhooks) | ⏳ Later (only with your explicit go-ahead: they change things on GitHub) |
 | OCI deployment, HTTPS | ⏳ Milestone 7 |
 
@@ -129,6 +130,8 @@ on real Oracle Database Free with Hibernate schema validation. Autonomous Databa
 |--------|------|-------|
 | POST | `/api/auth/register` | Public. `{displayName, email, password}` → 201 + session. 409 if the email exists |
 | POST | `/api/auth/login` | Public. `{email, password}` → 200 + new session. 401 generic message, 429 when throttled, 503 if DB down |
+| POST | `/api/auth/forgot-password` | Public. `{email}` → **202** always (never tells whether the account exists); emails a 6-digit code valid 10 min. 429 after 5 per email or 20 per IP per hour |
+| POST | `/api/auth/reset-password` | Public. `{email, code, newPassword}` → 204. 400 with `errors.code` if the code is wrong, used, expired or out of its 5 guesses |
 | POST | `/api/auth/logout` | Ends the session → 204, and hands out a fresh CSRF token so the user can log in again without reloading |
 | GET | `/api/auth/csrf` | Public. 204 with a fresh `XSRF-TOKEN` cookie (used by the frontend if a write was rejected for a missing token) |
 | GET | `/api/auth/me` | The logged-in user, or 401 |
@@ -155,7 +158,7 @@ on real Oracle Database Free with Hibernate schema validation. Autonomous Databa
 | GET | `/actuator/health/liveness`, `/actuator/health/readiness` | Public, `UP`/`DOWN` only. Readiness checks the database and this process's worker |
 | GET | `/actuator/prometheus` | Prometheus metrics; only from `deployhub.metrics.allowed-ips` (default: this machine) |
 
-All endpoints except register, login and health need a logged-in session. Every POST/PUT/DELETE must send
+All endpoints except register, login, forgot/reset password and health need a logged-in session. Every POST/PUT/DELETE must send
 the `X-XSRF-TOKEN` header matching the `XSRF-TOKEN` cookie (Angular does this automatically).
 
 ## Authentication in one minute
@@ -164,11 +167,19 @@ the `X-XSRF-TOKEN` header matching the `XSRF-TOKEN` cookie (Angular does this au
 - **Passwords:** 10-64 characters, stored as BCrypt hashes (`{bcrypt}$2a$…`). Never logged or returned.
 - **Emails** are trimmed and lower-cased, so `Bob@X.com` and `bob@x.com` are the same account (enforced by a DB constraint too).
 - **Brute force:** 5 failed logins per email+IP, or 30 per IP, within 15 minutes → HTTP 429. Counted in the database, so limits survive restarts.
+  A password reset clears that account's lockout.
+- **Forgot password:** "Forgot password?" on the login page → a 6-digit code by email → new password. Only a BCrypt
+  hash of the code is stored (table `password_reset_codes`); it works once, for 10 minutes, with 5 guesses; a new
+  code replaces the old one. The answer is the same for unknown emails, and the email is sent in the background,
+  so neither the reply nor its timing reveals who has an account. See ADR 0009.
 
 ### Environment variables
 | Variable | Default | Purpose |
 |---|---|---|
 | `DB_URL`, `DB_USERNAME`, `DB_PASSWORD` | none | Oracle connection (`oracle` profile only), via `deployhub-backend/.env` |
+| `MAIL_USERNAME` | empty | Gmail address that sends reset codes. Empty = no email; the code is written to the backend log (development only) |
+| `MAIL_PASSWORD` | empty | A Google **App password** for that address (Google Account → Security → 2-Step Verification → App passwords), not the normal Gmail password |
+| `MAIL_FROM`, `MAIL_HOST`, `MAIL_PORT` | address, `smtp.gmail.com`, `587` | Optional: another sender name/address or SMTP server |
 | `SESSION_COOKIE_SECURE` | `false` | Set to `true` whenever DeployHub is served over HTTPS (always in the cloud) |
 
 ### Running workers
@@ -217,6 +228,8 @@ are per process and start from zero on restart; Prometheus adds them up across p
   `docker image ls 'deployhub/*'` its images.
 
 ### Known limitations
+- A password reset doesn't end sessions that are already logged in on other devices; they end at logout or after
+  30 minutes without activity.
 - Each open log stream checks the database for new lines twice a second (workers may run in other processes, so
   the database is the only place that sees every line). That is cheap at this scale; limits (5 per user, 100 per
   process) protect the connection pool. Thousands of viewers would need a push channel (e.g. Oracle AQ or Redis).

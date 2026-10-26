@@ -171,6 +171,13 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface ResetPasswordRequest {
+  email: string;
+  /** The 6-digit code from the email. */
+  code: string;
+  newPassword: string;
+}
+
 export interface RegisterRequest {
   displayName: string;
   email: string;

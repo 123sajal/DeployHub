@@ -8,6 +8,8 @@
 
     @if (reason() === 'expired') {
       <p-message severity="info" text="Your session has ended. Please log in again." />
+    } @else if (reason() === 'reset') {
+      <p-message severity="success" text="Your password has been changed. Log in with the new one." />
     }
     @if (error(); as message) {
       <p-message severity="error" [text]="message" role="alert" />
@@ -37,6 +39,7 @@
       @if (showError('password')) {
         <small id="password-error" class="dh-error" role="alert">Enter your password</small>
       }
+      <a class="forgot" routerLink="/forgot-password">Forgot password?</a>
     </div>
 
     <p-button type="submit" label="Log in" icon="pi pi-sign-in" [loading]="submitting()" fluid />

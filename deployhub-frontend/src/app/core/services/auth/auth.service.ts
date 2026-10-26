@@ -3,7 +3,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, catchError, finalize, of, tap } from 'rxjs';
 
 import { environment } from '../../../../environments/environment';
-import { CurrentUser, LoginRequest, RegisterRequest } from '../../models/api.models';
+import { CurrentUser, LoginRequest, RegisterRequest, ResetPasswordRequest } from '../../models/api.models';
 
 /**
  * Holds who is logged in. The login itself lives in an HttpOnly session cookie that JavaScript
@@ -40,6 +40,16 @@ export class AuthService {
     return this.http
       .post<CurrentUser>(`${this.baseUrl}/register`, request)
       .pipe(tap((user) => this.currentUser.set(user)));
+  }
+
+  /** Asks for a reset code by email. The answer is the same whether or not the email has an account. */
+  forgotPassword(email: string): Observable<void> {
+    return this.http.post<void>(`${this.baseUrl}/forgot-password`, { email });
+  }
+
+  /** Sets a new password with the emailed code. Does not log in: the user logs in with the new password. */
+  resetPassword(request: ResetPasswordRequest): Observable<void> {
+    return this.http.post<void>(`${this.baseUrl}/reset-password`, request);
   }
 
   /** Ends the server session. The local state is cleared even if the request fails. */

@@ -22,6 +22,13 @@ export const routes: Routes = [
     title: 'Sign up - DeployHub',
   },
   {
+    path: 'forgot-password',
+    canActivate: [guestGuard],
+    loadComponent: () =>
+      import('./features/auth/forgot-password/forgot-password.component').then((m) => m.ForgotPasswordComponent),
+    title: 'Reset password - DeployHub',
+  },
+  {
     path: 'app',
     canActivate: [authGuard],
     canActivateChild: [authGuard],

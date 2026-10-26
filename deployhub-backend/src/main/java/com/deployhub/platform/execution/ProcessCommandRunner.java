@@ -24,7 +24,8 @@ import java.util.function.Consumer;
 @Component
 public class ProcessCommandRunner implements CommandRunner {
 
-    private static final int TAIL_LINES = 40;
+    /** Enough to still contain a build's first error line (npm prints its usage text after it). */
+    private static final int TAIL_LINES = 150;
 
     private final ScheduledExecutorService watchdog = Executors.newSingleThreadScheduledExecutor(runnable -> {
         Thread thread = new Thread(runnable, "command-watchdog");

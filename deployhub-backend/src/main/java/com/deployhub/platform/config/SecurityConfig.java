@@ -98,7 +98,8 @@ public class SecurityConfig {
                                                        IAuditService auditService, DeployHubProperties properties) {
             http
                     .authorizeHttpRequests(auth -> auth
-                            .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login").permitAll()
+                            .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login",
+                                    "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()
                             .requestMatchers("/api/health", "/actuator/health", "/actuator/health/liveness",
                                     "/actuator/health/readiness", "/error").permitAll()

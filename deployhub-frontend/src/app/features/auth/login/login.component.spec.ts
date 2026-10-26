@@ -33,6 +33,12 @@ describe('LoginComponent', () => {
     await fixture.whenStable();
   }
 
+  it('links to forgot password and confirms a finished reset', async () => {
+    const fixture = await render({ reason: 'reset' });
+    expect(fixture.nativeElement.querySelector('a.forgot').getAttribute('href')).toBe('/forgot-password');
+    expect(fixture.nativeElement.textContent).toContain('Your password has been changed');
+  });
+
   it('validates before calling the API', async () => {
     const fixture = await render();
     await submit(fixture);

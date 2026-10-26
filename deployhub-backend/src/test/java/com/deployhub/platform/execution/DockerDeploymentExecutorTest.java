@@ -237,6 +237,24 @@ class DockerDeploymentExecutorTest {
                 });
     }
 
+    @Test
+    void aBuildFailureReportsTheRealErrorNotDockersSummaryOrDesktopLink() {
+        runner.on(has("--progress=plain"), 1,
+                "#10 [5/5] RUN cd web && npm ci && npx ng build",
+                "#10 1.270 npm error `npm ci` can only install packages when your package.json and package-lock.json "
+                        + "are in sync.",
+                "#10 1.276 npm error Missing: @emnapi/runtime@1.11.3 from lock file",
+                "#10 1.276 npm error Run \"npm help ci\" for more info",
+                "#10 ERROR: process \"/bin/sh -c cd web && npm ci\" did not complete successfully: exit code: 1",
+                "ERROR: failed to build: failed to solve: process \"/bin/sh -c cd web && npm ci\" did not complete",
+                "View build details: docker-desktop://dashboard/build/desktop-linux/desktop-linux/abc123");
+
+        assertThatThrownBy(() -> executor().build(spec(ApplicationType.NODE_JS, "main", "npm start", null), context))
+                .isInstanceOf(DeploymentStepException.class)
+                .hasMessage("The build failed (exit code 1): npm error `npm ci` can only install packages when your "
+                        + "package.json and package-lock.json are in sync.");
+    }
+
     // ---------------------------------------------------------------- start
 
     @Test

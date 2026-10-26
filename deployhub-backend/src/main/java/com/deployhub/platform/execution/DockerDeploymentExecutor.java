@@ -581,7 +581,39 @@ public class DockerDeploymentExecutor implements DeploymentExecutor {
                     + lastLine(result));
         }
         return DeploymentStepException.permanent(what + " failed (exit code " + result.exitCode() + "): "
-                + lastLine(result));
+                + reason(result));
+    }
+
+    /** "#10 1.276 " in front of every line of docker build --progress=plain output. */
+    private static final java.util.regex.Pattern BUILD_PREFIX = java.util.regex.Pattern.compile("^#\\d+ [\\d.]+ ");
+    private static final java.util.regex.Pattern ERROR_LINE =
+            java.util.regex.Pattern.compile("(?i)(\\berror\\b|\\berr!|\\bfailed\\b|exception|cannot find|not found)");
+    /** Docker's own summary lines: they say that a step failed, not why. */
+    private static final List<String> DOCKER_SUMMARY = List.of("view build details", "error: failed to build",
+            "failed to solve", "did not complete successfully", "error: process \"", ">>>");
+
+    /**
+     * The most useful line for the failure message: the first real error in the output (e.g.
+     * "npm error Missing: ... from lock file"), skipping Docker's summary lines and its Docker Desktop link;
+     * otherwise the last line that isn't Docker noise.
+     */
+    static String reason(CommandRunner.Result result) {
+        String fallback = null;
+        for (String raw : result.tail()) {
+            String line = BUILD_PREFIX.matcher(raw.trim()).replaceFirst("").trim();
+            String lower = line.toLowerCase(Locale.ROOT);
+            if (line.isEmpty() || DOCKER_SUMMARY.stream().anyMatch(lower::contains)) {
+                continue;
+            }
+            if (ERROR_LINE.matcher(line).find()) {
+                return line.length() > MAX_REASON ? line.substring(0, MAX_REASON) + "..." : line;
+            }
+            fallback = line;
+        }
+        if (fallback == null) {
+            return lastLine(result);
+        }
+        return fallback.length() > MAX_REASON ? fallback.substring(0, MAX_REASON) + "..." : fallback;
     }
 
     private static String lastLine(CommandRunner.Result result) {

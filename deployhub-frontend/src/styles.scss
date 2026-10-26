@@ -216,6 +216,16 @@ code,
     color: var(--dh-text-muted);
     margin: 0;
   }
+  .forgot {
+    align-self: flex-end;
+    font-size: 0.85rem;
+  }
+  .code-input {
+    font-family: var(--dh-mono);
+    font-size: 1.3rem;
+    letter-spacing: 0.4em;
+    text-align: center;
+  }
 }
 
 .dh-auth-brand {
