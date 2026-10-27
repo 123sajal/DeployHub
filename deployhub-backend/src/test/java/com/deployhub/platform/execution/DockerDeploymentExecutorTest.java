@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.Objects;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -214,6 +215,107 @@ class DockerDeploymentExecutorTest {
         assertThat(build.get(build.indexOf("-f") + 1)).endsWith("/Dockerfile");
     }
 
+    private static DeploymentSpec inFolder(DeploymentSpec base, String folder) {
+        return new DeploymentSpec(base.deploymentId(), base.status(), base.mode(), base.attempt(), base.projectId(),
+                base.projectName(), base.repositoryUrl(), base.ref(), base.appType(), base.buildCommand(),
+                base.startCommand(), base.appPort(), base.healthCheckPath(), base.resolvedCommit(), base.imageRef(),
+                Map.of(), folder);
+    }
+
+    /** The fake checkout creates these files (paths relative to the repository root). */
+    private void repositoryContains(String... files) {
+        runner.onWithEffect(has("checkout"), command -> {
+            Path checkout = Path.of(command.get(command.indexOf("-C") + 1));
+            for (String file : files) {
+                try {
+                    Files.createDirectories(checkout.resolve(file).getParent());
+                } catch (java.io.IOException e) {
+                    throw new IllegalStateException(e);
+                }
+                write(checkout.resolve(file), "x");
+            }
+        });
+    }
+
+    @Test
+    void withAnAppFolderTheCommandsRunInsideItAndTheWholeRepositoryIsTheContext() {
+        repositoryContains("backend/package.json");
+        AtomicReference<String> dockerfile = new AtomicReference<>();
+        runner.onWithEffect(has("build", "--progress=plain"), command -> dockerfile.set(read(
+                Path.of(command.get(command.indexOf("-f") + 1)))));
+        DeploymentSpec plain = spec(ApplicationType.NODE_JS, "main", "npm start", null);
+
+        DeploymentExecutor.BuildResult result = executor().build(inFolder(plain, "backend"), context);
+
+        assertThat(dockerfile.get()).containsSubsequence("COPY --chown=", "WORKDIR /app/backend\n", "RUN npm ci",
+                "CMD [\"sh\",\"-c\",\"npm start\"]");
+        List<String> build = runner.commandsContaining("--progress=plain").getFirst();
+        assertThat(build.getLast()).doesNotEndWith("backend");
+        assertThat(result.imageRef()).as("a different folder is a different image")
+                .isNotEqualTo(DockerDeploymentExecutor.imageRef(plain, SHA));
+        assertThat(loggedMessages()).anyMatch(m -> m.contains("App folder: backend"));
+    }
+
+    @Test
+    void aMissingAppFolderFailsWithoutRetrying() {
+        repositoryContains("frontend/package.json");
+
+        assertThatThrownBy(() -> executor().build(inFolder(spec(ApplicationType.NODE_JS, "main", "npm start", null),
+                "backend"), context))
+                .isInstanceOfSatisfying(DeploymentStepException.class, e -> {
+                    assertThat(e.isRetryable()).isFalse();
+                    assertThat(e.getMessage()).contains("The folder 'backend' isn't in the repository");
+                });
+        assertThat(runner.commandsContaining("--progress=plain")).isEmpty();
+    }
+
+    @Test
+    void aDockerfileInAnAppFolderIsBuiltWithThatFolderAsContext() {
+        repositoryContains("api/Dockerfile");
+
+        executor().build(inFolder(spec(ApplicationType.DOCKERFILE, "main", null, null), "api"), context);
+
+        List<String> build = runner.commandsContaining("--progress=plain").getFirst();
+        assertThat(build.get(build.indexOf("-f") + 1)).endsWith("/api/Dockerfile");
+        assertThat(build.getLast()).endsWith("/api");
+    }
+
+    @Test
+    void aMissingNpmScriptSaysWhatToChange() {
+        runner.on(has("--progress=plain"), 1, "#11 0.71 npm error Missing script: \"build\"",
+                "#11 0.71 npm error To see a list of scripts, run:", "ERROR: failed to solve: process did not complete");
+
+        assertThatThrownBy(() -> executor().build(spec(ApplicationType.NODE_JS, "main", "npm start", null), context))
+                .isInstanceOfSatisfying(DeploymentStepException.class, e -> {
+                    assertThat(e.isRetryable()).isFalse();
+                    assertThat(e.getMessage()).contains("Missing script: \"build\"")
+                            .contains("Your package.json has no \"build\" script")
+                            .contains("Remove it from the command");
+                });
+    }
+
+    @Test
+    void npmCiWithoutALockFileSuggestsNpmInstall() {
+        assertThat(DockerDeploymentExecutor.hint("npm error The `npm ci` command can only install with an existing "
+                + "package-lock.json or npm-shrinkwrap.json")).contains("use npm install instead of npm ci");
+        assertThat(DockerDeploymentExecutor.hint("npm error code ERESOLVE")).isEmpty();
+    }
+
+    @Test
+    void aCrashAboutAMissingVariableNamesIt() {
+        assertThat(DockerDeploymentExecutor.missingVariableHint(List.of(
+                "Error: JWT_SECRET is not defined", "    at Object.<anonymous> (/app/src/server.js:12:9)"), Set.of("DB_HOST")))
+                .contains("seems to need JWT_SECRET, which isn't set").contains("Environment variables");
+        assertThat(DockerDeploymentExecutor.missingVariableHint(List.of(
+                "Caused by: java.lang.IllegalArgumentException: Could not resolve placeholder 'DB_URL' in value \"${DB_URL}\""),
+                Set.of())).contains("DB_URL");
+        assertThat(DockerDeploymentExecutor.missingVariableHint(List.of("KeyError: 'SECRET_KEY'"), Set.of()))
+                .as("Python's missing os.environ key").contains("SECRET_KEY");
+        assertThat(DockerDeploymentExecutor.missingVariableHint(List.of("Error: DB_HOST is not set"), Set.of("DB_HOST")))
+                .as("already set: not the problem").isEmpty();
+        assertThat(DockerDeploymentExecutor.missingVariableHint(List.of("Listening on port 3000"), Set.of())).isEmpty();
+    }
+
     @Test
     void dockerNotRunningIsRetried() {
         runner.on(has("--progress=plain"), 1, "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. "
@@ -233,7 +335,8 @@ class DockerDeploymentExecutorTest {
         assertThatThrownBy(() -> executor().build(spec(ApplicationType.NODE_JS, "main", "npm start", null), context))
                 .isInstanceOfSatisfying(DeploymentStepException.class, e -> {
                     assertThat(e.isRetryable()).isFalse();
-                    assertThat(e.getMessage()).isEqualTo("The build failed (exit code 1): npm ERR! missing script: build");
+                    assertThat(e.getMessage()).startsWith("The build failed (exit code 1): npm ERR! missing script: build")
+                            .contains("Your package.json has no \"build\" script"); // older npm wording gets the hint too
                 });
     }
 

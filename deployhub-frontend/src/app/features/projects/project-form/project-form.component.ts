@@ -9,19 +9,43 @@ import { MessageModule } from 'primeng/message';
 import { SelectModule } from 'primeng/select';
 
 import { PageStateComponent } from '../../../core/components/shared/page-state.component';
-import { ApiError, ApplicationType, Project, ProjectRequest } from '../../../core/models/api.models';
+import { ApiError, ApplicationType, DetectResult, Project, ProjectRequest } from '../../../core/models/api.models';
 import { ProjectApiService } from '../../../core/services/api/project-api.service';
-import { APP_TYPE_OPTIONS } from '../../../core/utils/deployment-status';
-import { BRANCH_PATTERN, PROJECT_NAME_PATTERN, repositoryUrlValidator } from './project-validators';
+import { APP_TYPE_OPTIONS, appTypeLabel } from '../../../core/utils/deployment-status';
+import {
+  APP_FOLDER_PATTERN,
+  BRANCH_PATTERN,
+  PROJECT_NAME_PATTERN,
+  normaliseAppFolder,
+  repositoryUrlValidator,
+  trimmedLength,
+  trimmedPattern,
+} from './project-validators';
 
-/** Suggestions for a new project. Start commands must listen on 0.0.0.0 and the port in $PORT. */
-const DEFAULT_COMMANDS: Record<ApplicationType, { build: string; start: string }> = {
+/**
+ * What each application type normally needs. Picking a type fills these in (unless you wrote your own commands).
+ * Start commands must listen on 0.0.0.0 and the port in $PORT.
+ */
+export const DEFAULT_COMMANDS: Record<ApplicationType, { build: string; start: string }> = {
   JAVA_SPRING_BOOT: { build: './mvnw -B -DskipTests package', start: 'java -jar target/*.jar' },
-  NODE_JS: { build: 'npm ci', start: 'npm start' },
-  STATIC_SITE: { build: 'npm ci && npm run build', start: 'npx --yes serve -s dist -l $PORT' },
+  // npm install also works without a package-lock.json (npm ci needs one).
+  NODE_JS: { build: 'npm install', start: 'npm start' },
+  // Serves the first build folder that exists: Angular (dist/<app>/browser), Vite/Vue (dist), React (build), Next export (out).
+  STATIC_SITE: {
+    build: 'npm install && npm run build',
+    start: 'npx --yes serve -s "$(for d in dist/*/browser dist build out; do [ -d "$d" ] && echo "$d" && break; done)" -l $PORT',
+  },
   PYTHON: { build: 'pip install --no-cache-dir -r requirements.txt', start: 'gunicorn -b 0.0.0.0:$PORT app:app' },
   DOCKERFILE: { build: '', start: '' },
 };
+
+/** Every suggested command, old ones included: a box holding one of these hasn't been customised by the user. */
+const SUGGESTED = new Set<string>([
+  ...Object.values(DEFAULT_COMMANDS).flatMap((c) => [c.build, c.start]),
+  'npm ci',
+  'npm ci && npm run build',
+  'npx --yes serve -s dist -l $PORT',
+]);
 
 /** Must match ApplicationType.defaultPort() in the backend. */
 export const DEFAULT_PORTS: Record<ApplicationType, number> = {
@@ -60,19 +84,33 @@ export class ProjectFormComponent implements OnInit {
   protected readonly submitError = signal<string | null>(null);
 
   protected readonly form = this.fb.nonNullable.group({
-    name: ['', [Validators.required, Validators.minLength(3), Validators.maxLength(50), Validators.pattern(PROJECT_NAME_PATTERN)]],
+    name: ['', [Validators.required, trimmedLength(3, 50), trimmedPattern(PROJECT_NAME_PATTERN)]],
     repositoryUrl: ['', [Validators.required, Validators.maxLength(300), repositoryUrlValidator]],
-    branch: ['main', [Validators.required, Validators.maxLength(100), Validators.pattern(BRANCH_PATTERN)]],
+    branch: ['main', [Validators.required, trimmedLength(1, 100), trimmedPattern(BRANCH_PATTERN)]],
     appType: this.fb.control<ApplicationType | null>(null, Validators.required),
+    rootDirectory: ['', [Validators.maxLength(200), Validators.pattern(APP_FOLDER_PATTERN)]],
     buildCommand: ['', [Validators.maxLength(500), Validators.pattern(SINGLE_LINE)]],
     startCommand: ['', [Validators.required, Validators.maxLength(500), Validators.pattern(SINGLE_LINE)]],
     appPort: this.fb.control<number | null>(null, [Validators.min(1), Validators.max(65535)]),
-    healthCheckPath: ['', [Validators.maxLength(200), Validators.pattern(HEALTH_PATH)]],
+    healthCheckPath: ['', [trimmedLength(0, 200), trimmedPattern(HEALTH_PATH)]],
   });
 
   /** Placeholder for the port field: the selected type's default. */
   protected readonly defaultPort = signal<number | null>(null);
   protected readonly isDockerfile = signal(false);
+  /** Set when a type was picked but the user's own commands were kept; offers the type's suggested commands. */
+  protected readonly keptCustomCommands = signal<ApplicationType | null>(null);
+  protected readonly appTypeLabel = appTypeLabel;
+  /** True while a loaded project or a detection result is put into the form (that isn't the user picking a type). */
+  private fillingForm = false;
+  /** What the last repository check found; shown under App folder. */
+  protected readonly detection = signal<DetectResult | null>(null);
+  protected readonly detecting = signal(false);
+  protected readonly detectError = signal<string | null>(null);
+  /** Commands filled in by the last detection: still counted as "not written by the user". */
+  private detectedCommands = new Set<string>();
+  /** The repository/branch/folder last checked automatically, so leaving a box unchanged doesn't check again. */
+  private lastAutoDetect = '';
 
   ngOnInit(): void {
     // A Dockerfile project may leave the start command empty (the image's own CMD is used).
@@ -88,12 +126,14 @@ export class ProjectFormComponent implements OnInit {
       );
       start.updateValueAndValidity({ emitEvent: false });
     });
+    // New and Edit alike: picking a type puts in that type's commands.
+    this.form.controls.appType.valueChanges
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((type) => {
+        if (!this.fillingForm) this.suggestCommands(type);
+      });
     if (this.isEdit()) {
       this.loadProject();
-    } else {
-      this.form.controls.appType.valueChanges
-        .pipe(takeUntilDestroyed(this.destroyRef))
-        .subscribe((type) => this.suggestCommands(type));
     }
   }
 
@@ -102,16 +142,19 @@ export class ProjectFormComponent implements OnInit {
     this.loadError.set(null);
     this.projectApi.get(Number(this.id())).subscribe({
       next: (p: Project) => {
+        this.fillingForm = true;
         this.form.setValue({
           name: p.name,
           repositoryUrl: p.repositoryUrl,
           branch: p.branch,
           appType: p.appType,
+          rootDirectory: p.rootDirectory ?? '',
           buildCommand: p.buildCommand ?? '',
           startCommand: p.startCommand ?? '',
           appPort: p.appPort,
           healthCheckPath: p.healthCheckPath ?? '',
         });
+        this.fillingForm = false;
         this.loading.set(false);
       },
       error: (err: ApiError) => {
@@ -119,6 +162,14 @@ export class ProjectFormComponent implements OnInit {
         this.loading.set(false);
       },
     });
+  }
+
+  /** On leaving a text box: drop spaces at the start and end, so what you see is what is saved. */
+  protected trim(field: keyof typeof this.form.controls): void {
+    const control = this.form.controls[field];
+    if (typeof control.value === 'string' && control.value !== control.value.trim()) {
+      control.setValue(control.value.trim() as never);
+    }
   }
 
   protected showError(field: keyof typeof this.form.controls): boolean {
@@ -142,6 +193,8 @@ export class ProjectFormComponent implements OnInit {
           return 'Not a valid branch name';
         case 'healthCheckPath':
           return 'Must start with / (for example /health)';
+        case 'rootDirectory':
+          return 'Must be a folder inside the repository, e.g. backend or apps/web';
         default:
           return 'Must be a single line';
       }
@@ -159,7 +212,10 @@ export class ProjectFormComponent implements OnInit {
     const request: ProjectRequest = {
       ...raw,
       appType: raw.appType!,
+      name: raw.name.trim(),
+      branch: raw.branch.trim(),
       repositoryUrl: raw.repositoryUrl.trim(),
+      rootDirectory: normaliseAppFolder(raw.rootDirectory),
       buildCommand: raw.buildCommand.trim() || null,
       startCommand: raw.startCommand.trim() || null,
       appPort: raw.appPort ?? null,
@@ -201,10 +257,93 @@ export class ProjectFormComponent implements OnInit {
     }
   }
 
+  /** New project: check the repository by itself once the URL (and branch, App folder) are filled in. */
+  protected autoDetect(): void {
+    if (this.isEdit()) return;
+    const { repositoryUrl, branch, rootDirectory } = this.form.controls;
+    if (repositoryUrl.invalid || !repositoryUrl.value.trim() || branch.invalid || rootDirectory.invalid) return;
+    const key = [repositoryUrl.value.trim(), branch.value.trim(), normaliseAppFolder(rootDirectory.value)].join('|');
+    if (key === this.lastAutoDetect) return;
+    this.lastAutoDetect = key;
+    this.detect(false);
+  }
+
+  /**
+   * Asks the server to look at the repository and fills in the type and commands it suggests. From the button
+   * (force = true) it always fills them in; automatically it keeps commands the user wrote.
+   */
+  protected detect(force = true): void {
+    const { repositoryUrl, branch, rootDirectory } = this.form.controls;
+    if (repositoryUrl.invalid || !repositoryUrl.value.trim() || branch.invalid || rootDirectory.invalid) {
+      repositoryUrl.markAsTouched();
+      this.detectError.set('Enter the repository URL (and branch) first.');
+      return;
+    }
+    this.detecting.set(true);
+    this.detectError.set(null);
+    this.projectApi
+      .detect(repositoryUrl.value.trim(), branch.value.trim(), normaliseAppFolder(rootDirectory.value))
+      .subscribe({
+        next: (result) => {
+          this.detecting.set(false);
+          this.detection.set(result);
+          if (result.appType) this.applyDetection(result, force);
+        },
+        error: (err: ApiError) => {
+          this.detecting.set(false);
+          this.detectError.set(err.detail);
+        },
+      });
+  }
+
+  /** "These folders look like apps": choosing one sets App folder and checks it. */
+  protected chooseAppFolder(folder: string): void {
+    this.form.controls.rootDirectory.setValue(folder);
+    this.form.controls.rootDirectory.markAsDirty();
+    this.detect(true);
+  }
+
+  private applyDetection(result: DetectResult, force: boolean): void {
+    const { appType, buildCommand, startCommand } = this.form.controls;
+    const untouched = (value: string) =>
+      !value.trim() || SUGGESTED.has(value.trim()) || this.detectedCommands.has(value.trim());
+    this.fillingForm = true; // the type changes below; don't put in that type's generic commands
+    appType.setValue(result.appType);
+    this.fillingForm = false;
+    if (force || (untouched(buildCommand.value) && untouched(startCommand.value))) {
+      buildCommand.setValue(result.buildCommand ?? '');
+      startCommand.setValue(result.startCommand ?? '');
+      buildCommand.markAsDirty();
+      startCommand.markAsDirty();
+      this.detectedCommands = new Set([result.buildCommand ?? '', result.startCommand ?? ''].filter((c) => c));
+      this.keptCustomCommands.set(null);
+    } else {
+      this.keptCustomCommands.set(result.appType);
+    }
+  }
+
+  /**
+   * Puts in the type's commands when the boxes are empty or still hold suggested commands (of any type). Commands
+   * the user wrote are kept, and keptCustomCommands offers the suggestion instead.
+   */
   private suggestCommands(type: ApplicationType | null): void {
     if (!type) return;
     const { buildCommand, startCommand } = this.form.controls;
-    if (!buildCommand.dirty) buildCommand.setValue(DEFAULT_COMMANDS[type].build);
-    if (!startCommand.dirty) startCommand.setValue(DEFAULT_COMMANDS[type].start);
+    const untouched = (value: string) =>
+      !value.trim() || SUGGESTED.has(value.trim()) || this.detectedCommands.has(value.trim());
+    if (untouched(buildCommand.value) && untouched(startCommand.value)) {
+      this.useSuggestedCommands(type);
+    } else {
+      this.keptCustomCommands.set(type);
+    }
+  }
+
+  protected useSuggestedCommands(type: ApplicationType): void {
+    const { buildCommand, startCommand } = this.form.controls;
+    buildCommand.setValue(DEFAULT_COMMANDS[type].build);
+    startCommand.setValue(DEFAULT_COMMANDS[type].start);
+    buildCommand.markAsDirty();
+    startCommand.markAsDirty();
+    this.keptCustomCommands.set(null);
   }
 }

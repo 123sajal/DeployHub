@@ -18,7 +18,6 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HexFormat;
 import java.util.List;
 import java.util.Locale;
@@ -89,15 +88,7 @@ public class DockerDeploymentExecutor implements DeploymentExecutor {
         this.settings = settings;
         this.proxyImage = proxyImage;
         this.tunnelImage = tunnelImage;
-        List<String> flags = new ArrayList<>(List.of(
-                "-c", "protocol.allow=never", "-c", "protocol.https.allow=always",
-                "-c", "credential.helper=", "-c", "core.askPass=",
-                "-c", "core.symlinks=false", "-c", "core.hooksPath=/dev/null",
-                "-c", "advice.detachedHead=false"));
-        if (allowLocalRepositories) {
-            flags.addAll(List.of("-c", "protocol.file.allow=always"));
-        }
-        this.gitSafetyFlags = List.copyOf(flags);
+        this.gitSafetyFlags = GitSafety.flags(allowLocalRepositories);
     }
 
     @Override
@@ -122,12 +113,17 @@ public class DockerDeploymentExecutor implements DeploymentExecutor {
                 return new BuildResult(commit, image);
             }
 
+            Path appFolder = appFolder(spec, source, context);
+            Path buildContext = source;
             Path dockerfile;
             if (spec.appType() == ApplicationType.DOCKERFILE) {
-                dockerfile = source.resolve("Dockerfile");
+                // A Dockerfile in an app folder is built with that folder as its context, as `docker build backend` would.
+                buildContext = appFolder;
+                dockerfile = appFolder.resolve("Dockerfile");
                 if (!Files.isRegularFile(dockerfile)) {
-                    throw DeploymentStepException.permanent(
-                            "No Dockerfile at the root of the repository (the project type is Dockerfile)");
+                    throw DeploymentStepException.permanent(spec.rootDirectory() == null
+                            ? "No Dockerfile at the root of the repository (the project type is Dockerfile)"
+                            : "No Dockerfile in the folder '" + spec.rootDirectory() + "' (the project type is Dockerfile)");
                 }
                 context.info("Building image " + image + " from the repository's Dockerfile");
             } else {
@@ -135,7 +131,7 @@ public class DockerDeploymentExecutor implements DeploymentExecutor {
                     throw DeploymentStepException.permanent("The project has no start command");
                 }
                 String content = DockerfileGenerator.generate(spec.appType(), spec.buildCommand(), spec.startCommand(),
-                        spec.appPort());
+                        spec.appPort(), spec.rootDirectory());
                 Files.writeString(generatedDockerfile, content, StandardCharsets.UTF_8);
                 dockerfile = generatedDockerfile;
                 context.info("Building image " + image + " with this generated Dockerfile:");
@@ -145,7 +141,7 @@ public class DockerDeploymentExecutor implements DeploymentExecutor {
             CommandRunner.Result result = docker(List.of("build", "--progress=plain",
                     "--label", "deployhub.project=" + spec.projectId(),
                     "--label", "deployhub.deployment=" + spec.deploymentId(),
-                    "-t", image, "-f", dockerfile.toString(), source.toString()),
+                    "-t", image, "-f", dockerfile.toString(), buildContext.toString()),
                     settings.buildTimeout(), context, context::output);
             if (!result.ok()) {
                 throw dockerFailure("The build", result, settings.buildTimeout());
@@ -158,6 +154,21 @@ public class DockerDeploymentExecutor implements DeploymentExecutor {
             deleteQuietly(source);
             deleteQuietly(generatedDockerfile);
         }
+    }
+
+    /** The project's app folder inside the checkout (the checkout itself without one); it must exist and stay inside. */
+    private static Path appFolder(DeploymentSpec spec, Path source, ExecutionContext context) throws IOException {
+        if (spec.rootDirectory() == null) {
+            return source;
+        }
+        Path folder = source.resolve(spec.rootDirectory()).normalize();
+        if (!folder.startsWith(source) || !Files.isDirectory(folder)
+                || !folder.toRealPath().startsWith(source.toRealPath())) {
+            throw DeploymentStepException.permanent("The folder '" + spec.rootDirectory() + "' isn't in the repository"
+                    + " (branch or commit " + spec.ref() + "). Check the App folder in the project settings.");
+        }
+        context.info("App folder: " + spec.rootDirectory() + " (the build and start commands run there)");
+        return folder;
     }
 
     /** Shallow, read-only fetch of exactly one branch, tag or commit. Returns the commit SHA checked out. */
@@ -205,17 +216,8 @@ public class DockerDeploymentExecutor implements DeploymentExecutor {
         }
     }
 
-    /** No credentials from anywhere: system/global config, askpass helpers (e.g. an IDE's), or a prompt. */
     private static Map<String, String> gitEnvironment() {
-        Map<String, String> env = new HashMap<>();
-        System.getenv().keySet().stream()
-                .filter(name -> name.startsWith("GIT_") || name.startsWith("VSCODE_GIT") || name.equals("SSH_ASKPASS"))
-                .forEach(name -> env.put(name, null));
-        env.put("GIT_TERMINAL_PROMPT", "0");
-        env.put("GIT_CONFIG_NOSYSTEM", "1");
-        env.put("GIT_CONFIG_GLOBAL", "/dev/null");
-        env.put("GIT_LFS_SKIP_SMUDGE", "1");
-        return env;
+        return GitSafety.environment();
     }
 
     private DeploymentStepException gitFailure(CommandRunner.Result result, String ref) {
@@ -242,7 +244,9 @@ public class DockerDeploymentExecutor implements DeploymentExecutor {
     static String imageRef(DeploymentSpec spec, String commit) {
         String settingsHash = sha256(String.join("\u0000", DockerfileGenerator.TEMPLATE_VERSION,
                 spec.appType().name(), String.valueOf(spec.buildCommand()), String.valueOf(spec.startCommand()),
-                String.valueOf(spec.appPort())));
+                String.valueOf(spec.appPort()))
+                // Only projects with an app folder add it, so existing images keep their names (and stay reusable).
+                + (spec.rootDirectory() == null ? "" : "\u0000" + spec.rootDirectory()));
         return "deployhub/p" + spec.projectId() + ":" + commit.substring(0, 12) + "-" + settingsHash.substring(0, 8);
     }
 
@@ -350,8 +354,11 @@ public class DockerDeploymentExecutor implements DeploymentExecutor {
             String[] parts = state.isEmpty() ? new String[0] : state.getLast().trim().split(" ");
             if (parts.length == 3 && (!parts[0].equals("running") && !parts[0].equals("created")
                     || !parts[1].equals("0"))) {
+                List<String> output = new ArrayList<>();
+                docker(List.of("logs", "--tail", "60", name), QUICK, null, output::add);
                 throw DeploymentStepException.permanent("The app stopped (exit code " + parts[2]
-                        + ") before answering its health check. See the app output above.");
+                        + ") before answering its health check. See the app output above."
+                        + missingVariableHint(output, spec.environment().keySet()));
             }
             if (System.nanoTime() - started > timeoutNanos) {
                 throw DeploymentStepException.permanent(lastStatus >= 500
@@ -362,6 +369,42 @@ public class DockerDeploymentExecutor implements DeploymentExecutor {
             }
             sleep(PROBE_INTERVAL, context);
         }
+    }
+
+    private static final java.util.regex.Pattern SPRING_PLACEHOLDER =
+            java.util.regex.Pattern.compile("Could not resolve placeholder '([A-Za-z_][A-Za-z0-9_]*)'");
+    private static final java.util.regex.Pattern ENV_NAME = java.util.regex.Pattern.compile("\\b([A-Z][A-Z0-9]*_[A-Z0-9_]+)\\b");
+    private static final java.util.regex.Pattern COMPLAINT = java.util.regex.Pattern.compile(
+            "(?i)(undefined|not defined|not set|is missing|missing|required|must be (set|provided)|keyerror|"
+                    + "could not resolve placeholder|no value|empty)");
+
+    /**
+     * " The app needs X, which isn't set: ..." when the app's last output complains about an environment variable the
+     * project doesn't have (e.g. "JWT_SECRET is not defined", Spring's "Could not resolve placeholder 'DB_URL'",
+     * Python's KeyError: 'SECRET_KEY'); "" otherwise.
+     */
+    static String missingVariableHint(List<String> output, java.util.Set<String> configured) {
+        java.util.Set<String> missing = new java.util.LinkedHashSet<>();
+        for (String line : output) {
+            var placeholder = SPRING_PLACEHOLDER.matcher(line);
+            while (placeholder.find()) {
+                missing.add(placeholder.group(1));
+            }
+            if (COMPLAINT.matcher(line).find()) {
+                var name = ENV_NAME.matcher(line);
+                while (name.find()) {
+                    missing.add(name.group(1));
+                }
+            }
+        }
+        missing.removeIf(n -> configured.contains(n) || n.equals("SERVER_PORT") || n.startsWith("ERR_"));
+        if (missing.isEmpty()) {
+            return "";
+        }
+        List<String> names = missing.stream().limit(3).toList();
+        return " The app seems to need " + String.join(", ", names) + (names.size() == 1 ? ", which isn't" : ", which aren't")
+                + " set: add " + (names.size() == 1 ? "it" : "them") + " under Environment variables on the project page"
+                + " (\"What this app needs\" can fill many in for you), then deploy again.";
     }
 
     private void copyContainerLogs(String name, ExecutionContext context) {
@@ -580,8 +623,27 @@ public class DockerDeploymentExecutor implements DeploymentExecutor {
             return DeploymentStepException.transientError(what + " could not download something (network): "
                     + lastLine(result));
         }
-        return DeploymentStepException.permanent(what + " failed (exit code " + result.exitCode() + "): "
-                + reason(result));
+        String reason = reason(result);
+        return DeploymentStepException.permanent(what + " failed (exit code " + result.exitCode() + "): " + reason
+                + hint(reason));
+    }
+
+    private static final java.util.regex.Pattern MISSING_NPM_SCRIPT =
+            java.util.regex.Pattern.compile("(?i)missing script: \"?([\\w:.-]+)\"?");
+
+    /** What to do about common mistakes in the commands, in plain words; "" when there's nothing to add. */
+    static String hint(String reason) {
+        var missing = MISSING_NPM_SCRIPT.matcher(reason);
+        if (missing.find()) {
+            String script = missing.group(1);
+            return ". Your package.json has no \"" + script + "\" script, so \"npm run " + script + "\" can't run. Remove"
+                    + " it from the command (a Node.js backend usually needs only npm install or npm ci), or check the"
+                    + " App folder points at the right package.json.";
+        }
+        if (reason.toLowerCase(Locale.ROOT).contains("can only install with an existing package-lock.json")) {
+            return ". The repository has no package-lock.json there: use npm install instead of npm ci.";
+        }
+        return "";
     }
 
     /** "#10 1.276 " in front of every line of docker build --progress=plain output. */

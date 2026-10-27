@@ -18,7 +18,7 @@ export function toApiError(error: unknown): ApiError {
     return {
       status: 0,
       title: 'API unreachable',
-      detail: 'Cannot reach the DeployHub API. Is the backend running on port 8080?',
+      detail: 'Cannot reach the DeployHub API. Is the backend running on port 8080 (or the API_PORT you started the frontend with)?',
       fieldErrors: {},
     };
   }

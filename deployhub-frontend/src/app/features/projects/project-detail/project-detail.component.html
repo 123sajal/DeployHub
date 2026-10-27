@@ -9,6 +9,23 @@
           <a class="mono repo" [href]="p.repositoryUrl" target="_blank" rel="noopener noreferrer">
             {{ p.repositoryUrl }} <i class="pi pi-external-link" aria-hidden="true"></i>
           </a>
+          @if (billing(); as b) {
+            @if (b.enabled) {
+              <p class="plan">
+                @if (p.free) {
+                  <i class="pi pi-gift" aria-hidden="true"></i> Free project: its deploys cost nothing
+                } @else if (b.freeProjectAvailable) {
+                  <i class="pi pi-gift" aria-hidden="true"></i> Free: your first deploy makes this one of your free
+                  projects ({{ b.freeProjectsLeft }} of {{ b.freeProjects }} left)
+                } @else {
+                  <i class="pi pi-wallet" aria-hidden="true"></i> {{ price() }} per deploy
+                  @if (b.credits > 0) {
+                    · {{ b.credits }} paid deploy{{ b.credits === 1 ? '' : 's' }} left
+                  }
+                }
+              </p>
+            }
+          }
         </div>
         <div class="actions">
           @if (appUrl(); as url) {
@@ -36,6 +53,8 @@
             </dd>
             <dt>Branch</dt>
             <dd class="mono">{{ p.branch }}</dd>
+            <dt>App folder</dt>
+            <dd class="mono">{{ p.rootDirectory ?? '/ (repository root)' }}</dd>
             <dt>Type</dt>
             <dd>{{ appTypeLabel(p.appType) }}</dd>
             <dt>Build command</dt>
@@ -54,7 +73,9 @@
         </section>
 
         <section class="dh-card">
-          <app-project-env-vars [projectId]="p.id" [refresh]="envVersion()" />
+          <app-project-env-requirements [projectId]="p.id" [refresh]="envVersion()"
+                                        (loaded)="requirements.set($event)" (changed)="envVersion.set(envVersion() + 1)" />
+          <app-project-env-vars [projectId]="p.id" [refresh]="envVersion()" (changed)="envVersion.set(envVersion() + 1)" />
         </section>
       </div>
 

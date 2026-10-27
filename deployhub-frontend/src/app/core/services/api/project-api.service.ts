@@ -3,16 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../../../environments/environment';
-import {
-  ApplicationType,
-  EnvVar,
-  Page,
-  Project,
-  ProjectDatabase,
-  ProjectRequest,
-  PublicLink,
-  ProjectRoute,
-} from '../../models/api.models';
+import { ApplicationType, DetectResult, EnvRequirements, EnvVar, Page, Project, ProjectDatabase, ProjectRequest, ProjectRoute, PublicLink } from '../../models/api.models';
 
 export interface ProjectQuery {
   search?: string;
@@ -41,6 +32,11 @@ export class ProjectApiService {
     return this.http.post<Project>(this.baseUrl, request);
   }
 
+  /** Looks at the repository's files and suggests the type and commands; nothing is saved. */
+  detect(repositoryUrl: string, branch: string, rootDirectory: string | null): Observable<DetectResult> {
+    return this.http.post<DetectResult>(`${this.baseUrl}/detect`, { repositoryUrl, branch, rootDirectory });
+  }
+
   update(id: number, request: ProjectRequest): Observable<Project> {
     return this.http.put<Project>(`${this.baseUrl}/${id}`, request);
   }
@@ -55,6 +51,16 @@ export class ProjectApiService {
   }
 
   /** Creates or replaces a variable; it is encrypted on the server and applies at the next deployment. */
+  /** The variables the app needs, read from its repository, and which are still missing. */
+  envRequirements(projectId: number): Observable<EnvRequirements> {
+    return this.http.get<EnvRequirements>(`${this.baseUrl}/${projectId}/env/requirements`);
+  }
+
+  /** Fills in these missing variables where DeployHub can (generated secrets, example values, database values). */
+  fillEnvRequirements(projectId: number, names: string[]): Observable<EnvRequirements> {
+    return this.http.post<EnvRequirements>(`${this.baseUrl}/${projectId}/env/requirements/fill`, { names });
+  }
+
   setEnv(projectId: number, name: string, value: string): Observable<EnvVar> {
     return this.http.put<EnvVar>(`${this.baseUrl}/${projectId}/env/${encodeURIComponent(name)}`, { value });
   }

@@ -1,11 +1,14 @@
 package com.deployhub.platform.controllers;
 
 import com.deployhub.platform.models.DTO.DatabaseResponseDTO;
+import com.deployhub.platform.models.DTO.EnvApplyRequestDTO;
+import com.deployhub.platform.models.DTO.EnvRequirementsResponseDTO;
 import com.deployhub.platform.models.DTO.EnvVarResponseDTO;
 import com.deployhub.platform.models.DTO.EnvVarValueRequestDTO;
 import com.deployhub.platform.models.DTO.ProjectRoutesRequestDTO;
 import com.deployhub.platform.models.DTO.PublicLinkResponseDTO;
 import com.deployhub.platform.models.DTO.RouteResponseDTO;
+import com.deployhub.platform.services.Interface.IEnvRequirementsService;
 import com.deployhub.platform.services.Interface.IProjectDatabaseService;
 import com.deployhub.platform.services.Interface.IProjectEnvService;
 import com.deployhub.platform.services.Interface.IProjectPublicLinkService;
@@ -34,6 +37,7 @@ public class ProjectSettingsController {
     private final IProjectEnvService envService;
     private final IProjectRouteService routeService;
     private final IProjectDatabaseService databaseService;
+    private final IEnvRequirementsService envRequirementsService;
     private final IProjectPublicLinkService publicLinkService;
 
     /** Names only: values are write-only. */
@@ -47,6 +51,19 @@ public class ProjectSettingsController {
     public EnvVarResponseDTO setEnv(@PathVariable Long projectId, @PathVariable String name,
                                     @Valid @RequestBody EnvVarValueRequestDTO request) {
         return envService.set(projectId, name, request.value());
+    }
+
+    /** The variables the app needs (read from its repository) and which are still missing. */
+    @GetMapping("/env/requirements")
+    public EnvRequirementsResponseDTO envRequirements(@PathVariable Long projectId) {
+        return envRequirementsService.requirements(projectId);
+    }
+
+    /** Fills in the given missing variables DeployHub can fill: generated secrets, example values, database aliases. */
+    @PostMapping("/env/requirements/fill")
+    public EnvRequirementsResponseDTO fillEnvRequirements(@PathVariable Long projectId,
+                                                          @Valid @RequestBody EnvApplyRequestDTO request) {
+        return envRequirementsService.fillIn(projectId, request.names());
     }
 
     @DeleteMapping("/env/{name}")

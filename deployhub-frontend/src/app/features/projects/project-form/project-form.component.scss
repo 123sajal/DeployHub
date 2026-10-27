@@ -38,3 +38,44 @@ header p {
     grid-template-columns: 1fr;
   }
 }
+
+.suggest {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.75rem;
+  margin: -0.25rem 0 0.75rem;
+  font-size: 0.85rem;
+}
+
+.detect {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  margin: 0 0 0.75rem;
+  font-size: 0.85rem;
+}
+
+.detect-result {
+  display: block;
+  margin: 0 0 1rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--dh-border);
+  border-radius: 8px;
+  font-size: 0.85rem;
+  ul {
+    margin: 0.4rem 0 0;
+    padding-left: 1.1rem;
+  }
+  li + li {
+    margin-top: 0.2rem;
+  }
+  .folders {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    margin-top: 0.5rem;
+  }
+}

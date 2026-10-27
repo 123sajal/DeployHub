@@ -14,12 +14,21 @@ import java.util.Map;
  * @param resolvedCommit set once the BUILDING step has fetched the source
  * @param imageRef       set once the BUILDING step has built the image
  * @param environment    decrypted environment variables for the app (runtime only); never log this record
+ * @param rootDirectory  folder inside the repository that holds the app; null = the repository root
  */
 public record DeploymentSpec(Long deploymentId, DeploymentStatus status, ExecutionMode mode, int attempt,
                              Long projectId, String projectName, String repositoryUrl, String ref,
                              ApplicationType appType, String buildCommand, String startCommand, int appPort,
                              String healthCheckPath, String resolvedCommit, String imageRef,
-                             Map<String, String> environment) {
+                             Map<String, String> environment, String rootDirectory) {
+
+    public DeploymentSpec(Long deploymentId, DeploymentStatus status, ExecutionMode mode, int attempt, Long projectId,
+                          String projectName, String repositoryUrl, String ref, ApplicationType appType,
+                          String buildCommand, String startCommand, int appPort, String healthCheckPath,
+                          String resolvedCommit, String imageRef, Map<String, String> environment) {
+        this(deploymentId, status, mode, attempt, projectId, projectName, repositoryUrl, ref, appType, buildCommand,
+                startCommand, appPort, healthCheckPath, resolvedCommit, imageRef, environment, null);
+    }
 
     public DeploymentSpec(Long deploymentId, DeploymentStatus status, ExecutionMode mode, int attempt, Long projectId,
                           String projectName, String repositoryUrl, String ref, ApplicationType appType,

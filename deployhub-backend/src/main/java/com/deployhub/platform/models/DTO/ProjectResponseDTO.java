@@ -10,6 +10,8 @@ public record ProjectResponseDTO(
         String repositoryUrl,
         String branch,
         ApplicationType appType,
+        /** Folder inside the repository that holds the app; null = repository root. */
+        String rootDirectory,
         String buildCommand,
         String startCommand,
         Integer appPort,
@@ -22,6 +24,8 @@ public record ProjectResponseDTO(
         boolean publicLinkEnabled,
         /** The public link as last seen, while enabled. */
         String publicLink,
+        /** True for the user's free project: its deploys cost nothing. Otherwise each deploy uses a paid credit. */
+        boolean free,
         Instant createdAt,
         Instant updatedAt) {
 }

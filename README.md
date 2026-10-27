@@ -42,6 +42,8 @@ npm install        # first time only
 npm start
 ```
 
+If your backend runs on another port, tell the proxy: `API_PORT=8081 npm start`.
+
 Open http://localhost:4200. API docs: http://localhost:8080/swagger-ui/index.html.
 H2 console (local only): http://localhost:8080/h2-console (JDBC URL `jdbc:h2:file:./data/deployhub`, user `sa`).
 
@@ -68,15 +70,36 @@ No cloud account needed: [docs/oracle-setup.md](docs/oracle-setup.md) shows how 
 ## Tests and builds
 
 ```bash
-cd ~/Desktop/DeployHub/deployhub-backend && ./mvnw test                # 222 tests on H2 (no Docker needed; uses the simulator)
-cd ~/Desktop/DeployHub/deployhub-backend && ./mvnw test -Poracle-it     # 127 tests on real Oracle Free (needs Docker running)
+cd ~/Desktop/DeployHub/deployhub-backend && ./mvnw test                # 284 tests on H2 (no Docker needed; uses the simulator)
+cd ~/Desktop/DeployHub/deployhub-backend && ./mvnw test -Poracle-it     # 140 tests on real Oracle Free (needs Docker running)
 cd ~/Desktop/DeployHub/deployhub-backend && ./mvnw test -Pdocker-it     # 7 tests: real git, build/run, address proxy, MySQL isolation
-cd ~/Desktop/DeployHub/deployhub-frontend && npx ng test --watch=false   # 98 Vitest tests
+cd ~/Desktop/DeployHub/deployhub-frontend && npx ng test --watch=false   # 133 Vitest tests
 cd ~/Desktop/DeployHub/deployhub-frontend && npx ng build
 ```
 
 H2 tests alone don't prove Oracle compatibility. The `oracle-it` suite runs the API, lifecycle and restart tests
 on real Oracle Database Free with Hibernate schema validation. Autonomous Database itself is verified by hand (see the guide).
+
+### Load test: 100 users at once (k6)
+```bash
+./load-tests/start-test-backend.sh          # separate backend on :8081, in-memory DB, simulated deploys
+k6 run load-tests/hundred-users.js          # in a second Terminal; -e USERS=200 -e HOLD=5m to change it
+```
+Each of 100 virtual users signs up, creates a project, deploys it, then keeps using the dashboard, projects,
+deployments and logs for 2 minutes, with security checks (no login = 401, another user's project = 404).
+Result on 2026-10-26 (this Mac): 71,991 requests, 0 errors, all checks passed; reads p95 1.7 ms, writes p95
+119 ms, all 100 deployments LIVE within 4.4 s. It never touches your real DeployHub on port 8080.
+
+### Load test: users deploy at once and each gets a live link (k6, real builds)
+```bash
+k6 run load-tests/live-links.js                  # 10 users, against your running DeployHub on :8080
+k6 run -e USERS=100 load-tests/live-links.js     # 100 users (raise Docker Desktop memory first)
+```
+Each user signs up (or logs in on later runs), creates a project, deploys it for real, waits for LIVE, opens the
+live link (expects HTTP 200), then deletes the project. Passes only if every user got a working link. Add
+`-e KEEP=1` to leave the apps running. Options and limits are at the top of the file. With paid deploys
+on, start the backend with `-Dspring-boot.run.arguments=--deployhub.billing.enabled=false` for this test (it
+stops with that message otherwise).
 
 ## What is implemented, simulated, or planned
 
@@ -97,6 +120,7 @@ on real Oracle Database Free with Hibernate schema validation. Autonomous Databa
 | `Idempotency-Key` on deployment creation (DB-enforced; same key + different request → 422) | ✅ Milestone 4 |
 | Backpressure: per-worker concurrency limit, max 5 in-progress deployments per user (429) | ✅ Milestone 4 |
 | Deployment status history (who/when/why/attempt) in API and UI | ✅ Milestone 4 |
+| Paid deploys: first 2 deployed projects free, other projects pay per deploy with Razorpay Checkout (402 → pay → deploy) | ✅ Implemented (test mode); see "Paid deploys" |
 | Real deployments: read-only `git fetch` of a public repo, `docker build`, `docker run` with limits, HTTP health check, then LIVE | ✅ Milestone 6 (`deployhub.execution.mode=REAL`, the default) |
 | Generated Dockerfiles for Java/Spring Boot, Node.js, static sites, Python; or the repository's own Dockerfile | ✅ Milestone 6 |
 | Container isolation: memory/CPU/process limits, all capabilities dropped, no-new-privileges, unprivileged user, published on 127.0.0.1 only | ✅ Milestone 6 |
@@ -138,7 +162,7 @@ on real Oracle Database Free with Hibernate schema validation. Autonomous Databa
 | GET | `/api/health` | Public. DB connectivity, active profile, execution mode |
 | GET | `/api/projects?search=&appType=&page=&size=` | size ≤ 100 |
 | POST/GET/PUT/DELETE | `/api/projects[/{id}]` | DELETE is 409 while a deployment is in progress |
-| POST | `/api/projects/{id}/deployments` | **202 Accepted** with a `Location` header; optional body `{"commitRef": "..."}`. Optional `Idempotency-Key` header: a repeat returns the same deployment (200, `Idempotent-Replayed: true`); 429 when 5 are already active |
+| POST | `/api/projects/{id}/deployments` | **202 Accepted** with a `Location` header; optional body `{"commitRef": "..."}`. Optional `Idempotency-Key` header: a repeat returns the same deployment (200, `Idempotent-Replayed: true`); 429 when 5 are already active; **402** (with `price`, `currency`) when the project isn't free and you have no paid deploy credit |
 | GET | `/api/deployments?projectId=&status=&page=&size=` | |
 | GET | `/api/deployments/{id}` | |
 | POST | `/api/deployments/{id}/cancel` | 409 if already final |
@@ -153,6 +177,12 @@ on real Oracle Database Free with Hibernate schema validation. Autonomous Databa
 | GET | `/api/deployments/{id}/history` | Every status change (who/when/why/attempt) plus the queue job's attempts and next retry |
 | GET | `/api/deployments/{id}/logs?after=<cursor>&limit=` | Returns `nextCursor`, `hasMore` and `deploymentStatus` |
 | GET | `/api/deployments/{id}/logs/stream?after=<cursor>` | `text/event-stream`. Events: `log` (id = cursor), `status`, `end`. Honours `Last-Event-ID`. 429 beyond 5 streams per user |
+| POST | `/api/projects/detect` | `{repositoryUrl, branch, rootDirectory}` → suggested `appType`, `buildCommand`, `startCommand`, `appFolders`, `notes` (nothing is saved). 429 after 20 per minute |
+| GET | `/api/projects/{id}/env/requirements` | The variables the app needs (from its repository), each with `kind`, `status` (SET/PROVIDED/MISSING), `required`, `help`; plus `autoFillable`, `databaseSuggested` |
+| POST | `/api/projects/{id}/env/requirements/fill` | `{names:[...]}`: fills those missing variables where DeployHub can (generated secrets, example values, database values); never overwrites a set value |
+| GET | `/api/billing` | Your paid-deploy credits, the price (paise), free projects per account and how many are left (`freeProjects`, `freeProjectsLeft`), whether payments are set up |
+| POST | `/api/billing/orders` | **201**: a Razorpay order for one deploy (`orderId`, public `keyId`, `amount`). 503 without Razorpay keys, 429 after 20 per hour |
+| POST | `/api/billing/orders/{orderId}/verify` | `{paymentId, signature}` from Checkout → 200 with the new credit count. 400 if the signature or Razorpay's record doesn't match; repeats are harmless |
 | GET | `/api/dashboard/summary` | Counts and recent deployments |
 | GET | `/api/dashboard/metrics` | Last hour: your queue wait (avg/max), finished/succeeded/failed, success rate; platform-wide queue depth |
 | GET | `/actuator/health/liveness`, `/actuator/health/readiness` | Public, `UP`/`DOWN` only. Readiness checks the database and this process's worker |
@@ -160,6 +190,27 @@ on real Oracle Database Free with Hibernate schema validation. Autonomous Databa
 
 All endpoints except register, login, forgot/reset password and health need a logged-in session. Every POST/PUT/DELETE must send
 the `X-XSRF-TOKEN` header matching the `XSRF-TOKEN` cookie (Angular does this automatically).
+
+## Paid deploys (Razorpay)
+- **Your first 2 projects are free** (`deployhub.billing.free-projects`), e.g. a backend and a frontend. The
+  first two projects you deploy become free projects; deploying them again (after code changes) stays free.
+  Deleting one doesn't give it back. Projects that existed before billing stay free.
+- **Every other project costs ₹49 per deploy** (`deployhub.billing.price-per-deploy`, in paise). Deploying one
+  without a credit returns 402, and DeployHub opens the payment page `/app/projects/payment?project=<id>`:
+  project, price, paid deploys left and **Pay ₹49 & deploy**, which opens Razorpay Checkout (UPI QR code, cards,
+  netbanking on Razorpay's own page) and deploys as soon as the payment is confirmed.
+- **One payment = one deploy credit**, usable on any of your paid projects. Rollbacks are free. A deploy that
+  fails or is cancelled gives its credit back.
+- **The server confirms every payment** before crediting it: Checkout's HMAC-SHA256 signature (made with the key
+  secret, which never leaves the backend) and Razorpay's own record of the payment (right order, right amount,
+  money captured). If the browser closes after paying, the payment is picked up the next time the page loads.
+- **Setup:** put your Razorpay test keys in `deployhub-backend/.env` (`RAZORPAY_KEY_ID=rzp_test_…`,
+  `RAZORPAY_KEY_SECRET=…`) and restart the backend. In test mode, choose **Netbanking**, any bank, then **Success**
+  on Razorpay's test bank page, or use a card from razorpay.com/docs/payments/payments/test-card-details. (On a
+  computer Razorpay shows UPI only as a QR code; typing a UPI ID is being phased out in India.) Switching to live money
+  later is only a key change, after Razorpay approves your KYC.
+- **Not done:** refunds, invoices/GST, and Razorpay webhooks (they need a public URL; the page-load check covers a
+  missed confirmation instead). See ADR 0010.
 
 ## Authentication in one minute
 - **Server-side sessions.** After login the browser holds only an HttpOnly `JSESSIONID` cookie. Nothing
@@ -180,6 +231,7 @@ the `X-XSRF-TOKEN` header matching the `XSRF-TOKEN` cookie (Angular does this au
 | `MAIL_USERNAME` | empty | Gmail address that sends reset codes. Empty = no email; the code is written to the backend log (development only) |
 | `MAIL_PASSWORD` | empty | A Google **App password** for that address (Google Account → Security → 2-Step Verification → App passwords), not the normal Gmail password |
 | `MAIL_FROM`, `MAIL_HOST`, `MAIL_PORT` | address, `smtp.gmail.com`, `587` | Optional: another sender name/address or SMTP server |
+| `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET` | empty | Razorpay API keys for paid deploys (Dashboard → Account & Settings → API Keys). `rzp_test_…` = test mode, no real money. Empty = the free project still works; paid deploys are refused with a message |
 | `SESSION_COOKIE_SECURE` | `false` | Set to `true` whenever DeployHub is served over HTTPS (always in the cloud) |
 
 ### Running workers
@@ -201,11 +253,79 @@ curl -s localhost:8080/actuator/prometheus | grep deployhub_
 is the throughput), `deployhub_jobs_retries_total`, `deployhub_deployments_duration_seconds{status}`. Counters and timers
 are per process and start from zero on restart; Prometheus adds them up across processes.
 
+### Detect from repository (the right commands, automatically)
+On a new project, as soon as the repository URL is filled in, DeployHub reads the repository's files and fills in
+the application type and commands that fit **that** project; **Detect from repository** re-runs it (New and Edit).
+It explains what it found, e.g. "Runs db:setup before starting, so the database tables exist". When the main folder
+has no app it lists the folders that do (`backend`, `frontend`), and one click picks one.
+
+| It looks at | And decides |
+|---|---|
+| `package.json` dependencies and scripts | Angular / Vite / React / Next / Node backend; `npm run build` only if a `build` script exists; database scripts (`db:setup`, `migrate`, ...) run before start |
+| lock files | `npm ci` (package-lock.json), `yarn`, `pnpm`, or `npm install` |
+| `angular.json` | the exact output folder, e.g. `dist/ems-frontend/browser` |
+| `pom.xml` / `build.gradle` + wrappers | Maven/Gradle commands; warns when the wrapper is missing |
+| `requirements.txt`, `manage.py`, `main.py`/`app.py` | Django / FastAPI / Flask start commands; warns about missing gunicorn/uvicorn |
+| `Dockerfile` | the Dockerfile type, or a note when another type was found too |
+
+It reads the repository with git (the same hardened, read-only fetch as deploys: only the file list plus the few
+files it needs), so it works for GitHub, GitLab and Bitbucket without tokens or rate limits. Limited to 20 checks
+per user per minute. Users can still change every command before saving. See ADR 0011.
+
+### What this app needs (environment variables, filled in for you)
+The project page reads the repository and lists the environment variables the app uses, so users don't have to
+know them: from `deployhub.json` (if the author wrote one), `.env.example` (in the App folder or the repository's
+main folder) and the code (`process.env.X`, `${X}` in Spring config, `os.environ["X"]`).
+
+| Kind | Example | What DeployHub does |
+|---|---|---|
+| Secret of the app | `JWT_SECRET`, `SESSION_SECRET`, `DEPLOYHUB_SECRETS_KEY` | **Fill in automatically** generates a strong random value (nobody needs to see it) |
+| Setting with an example | `JWT_EXPIRES_IN=24h`, `NODE_ENV` | fills in the example value (`production` for NODE_ENV) |
+| Database | `DB_HOST`, `DATABASE_URL` | points to **Add MySQL database**, which sets them |
+| Database, other name | `DB_USERNAME`, `MYSQL_PASSWORD` | copies the database's value once it exists |
+| Set by DeployHub | `PORT` | nothing to do |
+| Key from another service | `STRIPE_SECRET_KEY`, `SMTP_PASSWORD` | explains that only the user can get it |
+| Laptop-only example | `CORS_ORIGIN=http://localhost:4200` | warns; usually leave it out when the frontend uses an `/api` route |
+
+**Deploy** checks first: when required variables are missing it offers **Fill in & deploy** (or says what only the
+user can add, with **Deploy anyway**). And when an app still stops at start, the failure message names the variable
+it complained about (e.g. "JWT_SECRET is not defined", Spring's "Could not resolve placeholder 'DB_URL'").
+
+**`deployhub.json`** (optional, in the App folder) lets an app's author describe exactly what it needs:
+```json
+{ "env": { "JWT_SECRET": { "generate": "secret" }, "JWT_EXPIRES_IN": { "value": "24h" },
+           "SMTP_PASSWORD": { "required": false, "description": "Only for emails" } },
+  "database": "mysql" }
+```
+`deployhub-backend/deployhub.json` in this repository does that for running a demo copy of DeployHub on DeployHub
+(H2 database, simulated deploys, generated encryption key). See ADR 0012.
+
+### Suggested commands per application type
+Picking an **Application type** on the project form (New or Edit) fills in that type's usual commands; switching
+type switches them. Commands you wrote yourself are kept, with a **Use the suggested … commands** button.
+
+| Type | Build | Start |
+|---|---|---|
+| Node.js | `npm install` | `npm start` |
+| Static site | `npm install && npm run build` | serves the first of `dist/*/browser` (Angular), `dist` (Vite/Vue), `build` (React), `out` (Next export) |
+| Java / Spring Boot | `./mvnw -B -DskipTests package` | `java -jar target/*.jar` |
+| Python | `pip install --no-cache-dir -r requirements.txt` | `gunicorn -b 0.0.0.0:$PORT app:app` |
+| Dockerfile | (none) | (the Dockerfile's CMD) |
+
+Apps with an extra step still need it added, e.g. Employee Management's backend: `npm run db:setup && npm start`.
+
+### App folder (repositories with backend/ and frontend/ folders)
+When your app's files are in a folder of the repository, type that folder in **App folder** on the project form
+(e.g. `backend` or `frontend`). DeployHub copies the whole repository, then runs the build and start commands
+inside that folder, so plain commands work: `npm ci` and `npm start`, no `cd backend &&`. A missing folder fails the
+deployment straight away with a clear message. For Dockerfile projects, the folder's own `Dockerfile` is built with
+that folder as its context. Empty = the repository's main folder (as before).
+
 ### Deploying an app that has a frontend, a backend and a database
 1. **Database:** on the backend project's page, click **Add MySQL database**. DeployHub creates it on its shared
    MySQL server and sets `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` and `DATABASE_URL`. The password
    is shown once; create your tables from your Mac on `127.0.0.1:3307` (or in the app's start command).
-2. **Backend project:** add any other environment variables (e.g. `JWT_SECRET`), then deploy. If its code is in a subfolder: build `cd backend && npm ci`, start `cd backend && npm start`.
+2. **Backend project:** add any other environment variables (e.g. `JWT_SECRET`), then deploy. If its code is in a subfolder, set **App folder** to `backend`; then build `npm ci`, start `npm start`.
 3. **Frontend project** (type Static site): add the route `/api` → the backend project, and make the frontend call
    `/api/...` (a relative URL). Deploy and open the frontend's address: `/api` requests reach the backend, no CORS.
 4. Every project keeps its address (`http://localhost:19xxx`) across redeploys and rollbacks.

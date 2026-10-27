@@ -71,6 +71,20 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         return problem(HttpStatus.SERVICE_UNAVAILABLE, "Service unavailable", ex.getMessage());
     }
 
+    /** The deploy needs a paid deploy credit; the body says what it costs so the app can offer to pay. */
+    @ExceptionHandler(PaymentRequiredException.class)
+    ProblemDetail handlePaymentRequired(PaymentRequiredException ex) {
+        ProblemDetail body = problem(HttpStatus.PAYMENT_REQUIRED, "Payment required", ex.getMessage());
+        body.setProperty("price", ex.getPrice());
+        body.setProperty("currency", ex.getCurrency());
+        return body;
+    }
+
+    @ExceptionHandler(PaymentVerificationException.class)
+    ProblemDetail handlePaymentVerification(PaymentVerificationException ex) {
+        return problem(HttpStatus.BAD_REQUEST, "Payment not verified", ex.getMessage());
+    }
+
     @ExceptionHandler(IdempotencyKeyReuseException.class)
     ProblemDetail handleIdempotencyReuse(IdempotencyKeyReuseException ex) {
         return problem(HttpStatus.UNPROCESSABLE_CONTENT, "Idempotency key reused", ex.getMessage());

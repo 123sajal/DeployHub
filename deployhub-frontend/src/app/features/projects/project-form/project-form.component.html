@@ -14,7 +14,7 @@
     <form class="dh-card form" [formGroup]="form" (ngSubmit)="submit()" novalidate>
       <div class="dh-field">
         <label for="name">Project name</label>
-        <input pInputText id="name" formControlName="name" placeholder="my-api" autocomplete="off"
+        <input pInputText id="name" formControlName="name" (blur)="trim('name')" placeholder="my-api" autocomplete="off"
                [attr.aria-invalid]="showError('name')" aria-describedby="name-hint name-error" />
         <small id="name-hint" class="dh-hint">Lowercase letters, digits and hyphens. Unique per account.</small>
         @if (showError('name')) {
@@ -24,7 +24,7 @@
 
       <div class="dh-field">
         <label for="repositoryUrl">Repository URL</label>
-        <input pInputText id="repositoryUrl" formControlName="repositoryUrl" type="url"
+        <input pInputText id="repositoryUrl" formControlName="repositoryUrl" (blur)="trim('repositoryUrl'); autoDetect()" type="url"
                placeholder="https://github.com/owner/repo" autocomplete="off"
                [attr.aria-invalid]="showError('repositoryUrl')" aria-describedby="repo-hint repo-error" />
         <small id="repo-hint" class="dh-hint">Public https URL on github.com, gitlab.com or bitbucket.org.</small>
@@ -36,7 +36,7 @@
       <div class="row">
         <div class="dh-field">
           <label for="branch">Branch</label>
-          <input pInputText id="branch" formControlName="branch" class="mono"
+          <input pInputText id="branch" formControlName="branch" (blur)="trim('branch'); autoDetect()" class="mono"
                  [attr.aria-invalid]="showError('branch')" aria-describedby="branch-error" />
           @if (showError('branch')) {
             <small id="branch-error" class="dh-error" role="alert">{{ errorText('branch') }}</small>
@@ -53,8 +53,62 @@
       </div>
 
       <div class="dh-field">
+        <label for="rootDirectory">App folder <span class="dh-muted">(optional)</span></label>
+        <input pInputText id="rootDirectory" formControlName="rootDirectory" (blur)="trim('rootDirectory'); autoDetect()" class="mono" placeholder="backend"
+               autocomplete="off" [attr.aria-invalid]="showError('rootDirectory')"
+               aria-describedby="folder-hint folder-error" />
+        <small id="folder-hint" class="dh-hint">
+          The folder in your repository that has this app's files, e.g. <code>backend</code> or <code>frontend</code>.
+          The build and start commands run inside it, so no <code>cd</code> is needed. Empty = the repository's main
+          folder.
+        </small>
+        @if (showError('rootDirectory')) {
+          <small id="folder-error" class="dh-error" role="alert">{{ errorText('rootDirectory') }}</small>
+        }
+      </div>
+
+      <div class="detect">
+        <p-button label="Detect from repository" icon="pi pi-search" size="small" severity="secondary"
+                  [outlined]="true" [loading]="detecting()" (onClick)="detect()" />
+        <span class="dh-muted">Reads the repository's files and fills in the type and commands.</span>
+      </div>
+      @if (detectError(); as message) {
+        <p-message severity="warn" [text]="message" styleClass="detect-result" />
+      }
+      @if (detection(); as d) {
+        <div class="detect-result" role="status" aria-live="polite">
+          @if (d.appType) {
+            <strong><i class="pi pi-check-circle" aria-hidden="true"></i> Detected: {{ appTypeLabel(d.appType) }}</strong>
+          } @else {
+            <strong><i class="pi pi-info-circle" aria-hidden="true"></i> No app found here</strong>
+          }
+          <ul>
+            @for (note of d.notes; track note) {
+              <li>{{ note }}</li>
+            }
+          </ul>
+          @if (d.appFolders.length) {
+            <div class="folders">
+              <span class="dh-muted">Use folder:</span>
+              @for (folder of d.appFolders; track folder) {
+                <p-button [label]="folder" icon="pi pi-folder" size="small" [text]="true" (onClick)="chooseAppFolder(folder)" />
+              }
+            </div>
+          }
+        </div>
+      }
+
+      @if (keptCustomCommands(); as type) {
+        <div class="suggest" role="status">
+          <span class="dh-muted">You wrote your own commands, so they were kept.</span>
+          <p-button [label]="'Use the suggested ' + appTypeLabel(type) + ' commands'" icon="pi pi-wand" size="small"
+                    [text]="true" (onClick)="useSuggestedCommands(type)" />
+        </div>
+      }
+
+      <div class="dh-field">
         <label for="buildCommand">Build command <span class="dh-muted">(optional)</span></label>
-        <input pInputText id="buildCommand" formControlName="buildCommand" class="mono" placeholder="npm run build"
+        <input pInputText id="buildCommand" formControlName="buildCommand" (blur)="trim('buildCommand')" class="mono" placeholder="npm run build"
                aria-describedby="build-hint" />
         <small id="build-hint" class="dh-hint">
           Runs inside Docker's build sandbox, not on your computer. Never put secrets here.
@@ -71,7 +125,7 @@
             <span class="dh-muted">(optional: empty = the Dockerfile's CMD)</span>
           }
         </label>
-        <input pInputText id="startCommand" formControlName="startCommand" class="mono" placeholder="npm start"
+        <input pInputText id="startCommand" formControlName="startCommand" (blur)="trim('startCommand')" class="mono" placeholder="npm start"
                [attr.aria-invalid]="showError('startCommand')" aria-describedby="start-hint start-error" />
         <small id="start-hint" class="dh-hint">The app must listen on 0.0.0.0 and the port in <code>$PORT</code>.</small>
         @if (showError('startCommand')) {
@@ -92,7 +146,7 @@
         </div>
         <div class="dh-field">
           <label for="healthCheckPath">Health check path <span class="dh-muted">(optional)</span></label>
-          <input pInputText id="healthCheckPath" formControlName="healthCheckPath" class="mono" placeholder="/"
+          <input pInputText id="healthCheckPath" formControlName="healthCheckPath" (blur)="trim('healthCheckPath')" class="mono" placeholder="/"
                  [attr.aria-invalid]="showError('healthCheckPath')" aria-describedby="health-hint health-error" />
           <small id="health-hint" class="dh-hint">Must answer HTTP (below 500) before the deployment goes live.</small>
           @if (showError('healthCheckPath')) {

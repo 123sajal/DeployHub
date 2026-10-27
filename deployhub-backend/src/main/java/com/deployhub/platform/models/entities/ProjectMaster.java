@@ -58,6 +58,10 @@ public class ProjectMaster {
     @Column(name = "app_port")
     private Integer appPort;
 
+    /** Folder inside the repository that holds the app (e.g. "backend"); commands run there. Null = repository root. */
+    @Column(name = "root_directory", length = 200)
+    private String rootDirectory;
+
     /** Path the health check requests; null = "/". */
     @Column(name = "health_check_path", length = 200)
     private String healthCheckPath;
@@ -76,6 +80,14 @@ public class ProjectMaster {
 
     public boolean isPublicLinkOn() {
         return "ON".equals(publicLinkState);
+    }
+
+    /** Set on the user's free project (their first deployed one): its deploys cost nothing. Null = paid deploys. */
+    @Column(name = "free_since")
+    private Instant freeSince;
+
+    public boolean isFree() {
+        return freeSince != null;
     }
 
     @Column(name = "created_at", nullable = false)

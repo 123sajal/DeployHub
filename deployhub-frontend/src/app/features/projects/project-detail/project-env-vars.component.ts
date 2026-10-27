@@ -1,5 +1,5 @@
 import { DatePipe } from '@angular/common';
-import { Component, effect, inject, input, signal, untracked } from '@angular/core';
+import { Component, effect, inject, input, output, signal, untracked } from '@angular/core';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { ConfirmationService, MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
@@ -74,6 +74,8 @@ export class ProjectEnvVarsComponent {
   readonly projectId = input.required<number>();
   /** Bumped by the page when something else changed the variables (e.g. adding a database). */
   readonly refresh = input(0);
+  /** A variable was added, replaced or deleted (so "What this app needs" can update). */
+  readonly changed = output<void>();
 
   private readonly api = inject(ProjectApiService);
   private readonly confirm = inject(ConfirmationService);
@@ -132,6 +134,7 @@ export class ProjectEnvVarsComponent {
         this.form.reset();
         this.messages.add({ severity: 'success', summary: `${name} saved`, detail: 'Applies at the next deployment' });
         this.load();
+        this.changed.emit();
       },
       error: (err: ApiError) => {
         this.saving.set(false);
@@ -151,7 +154,10 @@ export class ProjectEnvVarsComponent {
       rejectButtonProps: { severity: 'secondary', text: true },
       accept: () =>
         this.api.deleteEnv(this.projectId(), name).subscribe({
-          next: () => this.load(),
+          next: () => {
+            this.load();
+            this.changed.emit();
+          },
           error: (err: ApiError) => this.error.set(err),
         }),
     });

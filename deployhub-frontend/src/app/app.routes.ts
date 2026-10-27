@@ -53,6 +53,13 @@ export const routes: Routes = [
         title: 'New project - DeployHub',
       },
       {
+        // Before projects/:id, or "payment" would be read as a project id.
+        path: 'projects/payment',
+        loadComponent: () =>
+          import('./features/projects/project-payment/project-payment.component').then((m) => m.ProjectPaymentComponent),
+        title: 'Pay for a deploy - DeployHub',
+      },
+      {
         path: 'projects/:id',
         loadComponent: () =>
           import('./features/projects/project-detail/project-detail.component').then((m) => m.ProjectDetailComponent),

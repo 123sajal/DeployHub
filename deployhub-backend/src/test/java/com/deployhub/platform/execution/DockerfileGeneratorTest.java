@@ -43,4 +43,14 @@ class DockerfileGeneratorTest {
         assertThatThrownBy(() -> DockerfileGenerator.baseImage(ApplicationType.DOCKERFILE))
                 .isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void anAppFolderMakesTheCommandsRunThereAfterTheWholeRepositoryIsCopied() {
+        String file = DockerfileGenerator.generate(ApplicationType.NODE_JS, "npm ci", "npm start", 3000, "apps/api");
+
+        assertThat(file).containsSubsequence("WORKDIR /app\n", "COPY --chown=10001:10001 . .\n",
+                "WORKDIR /app/apps/api\n", "RUN npm ci\n", "CMD ");
+        assertThat(DockerfileGenerator.generate(ApplicationType.NODE_JS, "npm ci", "npm start", 3000))
+                .doesNotContain("WORKDIR /app/");
+    }
 }

@@ -23,6 +23,7 @@ import com.deployhub.platform.models.entities.Deployment;
 import com.deployhub.platform.models.entities.DeploymentJob;
 import com.deployhub.platform.models.entities.DeploymentLog;
 import com.deployhub.platform.models.entities.IdempotencyRecord;
+import com.deployhub.platform.models.entities.Payment;
 import com.deployhub.platform.models.entities.ProjectMaster;
 import com.deployhub.platform.models.enums.AuditEventType;
 import com.deployhub.platform.models.enums.DeploymentStatus;
@@ -35,6 +36,7 @@ import com.deployhub.platform.repositories.DeploymentStatusHistoryRepository;
 import com.deployhub.platform.repositories.IdempotencyRecordRepository;
 import com.deployhub.platform.repositories.ProjectRepository;
 import com.deployhub.platform.services.Interface.IAuditService;
+import com.deployhub.platform.services.Interface.IBillingService;
 import com.deployhub.platform.services.Interface.ICurrentUserService;
 import com.deployhub.platform.services.Interface.IDeploymentService;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -83,6 +85,7 @@ public class DeploymentService implements IDeploymentService {
     private final DeploymentExecutors executors;
     private final TransactionTemplate tx;
     private final DeployHubProperties properties;
+    private final IBillingService billingService;
     private final Clock clock;
 
     public DeploymentService(DeploymentRepository deploymentRepository, DeploymentLogRepository deploymentLogRepository,
@@ -92,7 +95,7 @@ public class DeploymentService implements IDeploymentService {
                              ICurrentUserService currentUserService, IAuditService auditService,
                              DeploymentMetrics metrics, DeploymentExecutors executors,
                              PlatformTransactionManager transactionManager, DeployHubProperties properties,
-                             Clock clock) {
+                             IBillingService billingService, Clock clock) {
         this.deploymentRepository = deploymentRepository;
         this.deploymentLogRepository = deploymentLogRepository;
         this.jobRepository = jobRepository;
@@ -107,6 +110,7 @@ public class DeploymentService implements IDeploymentService {
         this.executors = executors;
         this.tx = new TransactionTemplate(transactionManager);
         this.properties = properties;
+        this.billingService = billingService;
         this.clock = clock;
     }
 
@@ -181,12 +185,16 @@ public class DeploymentService implements IDeploymentService {
                 ProjectMaster project = target.project();
                 Deployment rollbackOf = target.rollbackOf();
                 checkAdmission(userId);
+                // Rollbacks are free; a new deploy is free (free project) or uses a paid credit, else 402.
+                Optional<Payment> credit = rollbackOf == null ? billingService.admitDeploy(userId, project)
+                        : Optional.empty();
                 Instant now = clock.instant();
                 ExecutionMode mode = properties.execution().mode();
                 Deployment deployment = deploymentRepository.save(Deployment.queue(project, target.commitRef(),
                         rollbackOf == null ? null : rollbackOf.getId(), mode, now));
                 // Same transaction as the deployment: if this commits, the job exists. No lost requests.
                 jobRepository.save(DeploymentJob.enqueue(deployment.getId(), properties.worker().maxAttempts(), now));
+                credit.ifPresent(c -> billingService.useCredit(c, deployment.getId()));
                 transitions.recordCreated(deployment, rollbackOf == null ? "Deployment requested"
                         : "Rollback to deployment #" + rollbackOf.getId() + " requested", "user:" + userId);
                 if (key != null) {

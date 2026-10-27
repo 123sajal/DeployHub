@@ -438,7 +438,8 @@ public class DeploymentJobWorker {
             return new DeploymentSpec(d.getId(), d.getStatus(), d.getExecutionMode(), job.attempt(), p.getId(),
                     p.getName(), p.getRepositoryUrl(), d.getCommitRef() != null ? d.getCommitRef() : p.getBranch(),
                     p.getAppType(), p.getBuildCommand(), p.getStartCommand(), ProjectMapper.effectivePort(p),
-                    p.getHealthCheckPath(), d.getResolvedCommit(), d.getImageRef(), environment(p.getId()));
+                    p.getHealthCheckPath(), d.getResolvedCommit(), d.getImageRef(), environment(p.getId()),
+                    p.getRootDirectory());
         }).orElse(null);
     }
 

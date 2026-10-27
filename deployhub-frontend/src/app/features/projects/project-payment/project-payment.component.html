@@ -1,0 +1,54 @@
+<div class="dh-page narrow">
+  @if (details(); as p) {
+    <a [routerLink]="['/app/projects', p.id]" class="back"><i class="pi pi-arrow-left" aria-hidden="true"></i> {{ p.name }}</a>
+  } @else {
+    <a routerLink="/app/projects" class="back"><i class="pi pi-arrow-left" aria-hidden="true"></i> Projects</a>
+  }
+
+  <app-page-state [loading]="loading()" [error]="error()" (retry)="load()">
+    @if (details(); as p) {
+      @if (billing(); as b) {
+        <h1>Pay for a deploy</h1>
+
+        <section class="dh-card">
+          <dl class="dh-dl">
+            <dt>Project</dt>
+            <dd class="mono">{{ p.name }}</dd>
+            <dt>Price</dt>
+            <dd>
+              @if (p.free) {
+                Free: this is one of your free projects
+              } @else {
+                <strong>{{ price() }}</strong> for one deploy
+              }
+            </dd>
+            <dt>Paid deploys left</dt>
+            <dd>{{ b.credits }}</dd>
+          </dl>
+
+          @if (p.free || !b.enabled) {
+            <p class="dh-muted">This deploy costs nothing.</p>
+            <p-button label="Deploy" icon="pi pi-cloud-upload" [loading]="busy()" (onClick)="deploy()" />
+          } @else if (b.credits > 0) {
+            <p class="dh-muted">You already have a paid deploy. It is used for this deploy.</p>
+            <p-button label="Deploy now" icon="pi pi-cloud-upload" [loading]="busy()" (onClick)="deploy()" />
+          } @else if (!b.paymentsConfigured) {
+            <p-message severity="warn" text="Payments aren't set up on this DeployHub yet, so this deploy can't be paid for." />
+          } @else {
+            <p class="dh-muted">
+              Your {{ b.freeProjects }} free project{{ b.freeProjects === 1 ? ' is' : 's are' }} already used, so each
+              deploy of this project costs {{ price() }}.
+              If the deploy fails or you cancel it, you get the deploy back.
+            </p>
+            <p-button [label]="'Pay ' + price() + ' & deploy'" icon="pi pi-wallet" [loading]="busy()"
+                      (onClick)="payAndDeploy()" />
+            <p class="secure dh-muted">
+              <i class="pi pi-lock" aria-hidden="true"></i>
+              Paid on Razorpay's secure page: UPI (QR code), cards, netbanking. Card and UPI details never reach DeployHub.
+            </p>
+          }
+        </section>
+      }
+    }
+  </app-page-state>
+</div>

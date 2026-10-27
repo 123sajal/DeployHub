@@ -1,9 +1,12 @@
 package com.deployhub.platform.controllers;
 
+import com.deployhub.platform.models.DTO.DetectRequestDTO;
+import com.deployhub.platform.models.DTO.DetectResponseDTO;
 import com.deployhub.platform.models.DTO.PageResponseDTO;
 import com.deployhub.platform.models.DTO.ProjectRequestDTO;
 import com.deployhub.platform.models.DTO.ProjectResponseDTO;
 import com.deployhub.platform.models.enums.ApplicationType;
+import com.deployhub.platform.services.Interface.IProjectDetectionService;
 import com.deployhub.platform.services.Interface.IProjectService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
@@ -28,6 +31,7 @@ import java.net.URI;
 public class ProjectController {
 
     private final IProjectService projectService;
+    private final IProjectDetectionService detectionService;
 
     @GetMapping
     public PageResponseDTO<ProjectResponseDTO> list(@RequestParam(required = false) String search,
@@ -35,6 +39,12 @@ public class ProjectController {
                                                     @RequestParam(defaultValue = "0") @Min(0) int page,
                                                     @RequestParam(defaultValue = "20") @Min(1) @Max(100) int size) {
         return projectService.list(search, appType, page, size);
+    }
+
+    /** Looks at the repository's files and suggests the type and commands (nothing is saved). */
+    @PostMapping("/detect")
+    public DetectResponseDTO detect(@Valid @RequestBody DetectRequestDTO request) {
+        return detectionService.detect(request);
     }
 
     @GetMapping("/{id}")

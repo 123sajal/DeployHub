@@ -20,6 +20,15 @@
   }
 }
 
+.plan {
+  margin: 0.4rem 0 0;
+  font-size: 0.85rem;
+  color: var(--dh-text-muted);
+  .pi {
+    font-size: 0.8rem;
+  }
+}
+
 .actions {
   display: flex;
   gap: 0.5rem;

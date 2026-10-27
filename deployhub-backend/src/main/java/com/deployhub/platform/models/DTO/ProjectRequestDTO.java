@@ -30,6 +30,12 @@ public record ProjectRequestDTO(
         @NotNull
         ApplicationType appType,
 
+        /** Folder inside the repository that holds the app, e.g. "backend" or "apps/web"; empty = repository root. */
+        @Size(max = 200)
+        @Pattern(regexp = "^\\s*(\\./)?[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*/?\\s*$|^\\s*$",
+                message = "must be a folder inside the repository, e.g. backend or apps/web (letters, digits, . _ - and /)")
+        String rootDirectory,
+
         // Commands end up in a generated Dockerfile, where a line break would start a new instruction.
         @Size(max = 500)
         @Pattern(regexp = "^[^\\r\\n]*$", message = "must be a single line")
@@ -49,4 +55,16 @@ public record ProjectRequestDTO(
         @Size(max = 200)
         @Pattern(regexp = "^/[A-Za-z0-9._~/?=&%-]*$", message = "must start with / (for example /health)")
         String healthCheckPath) {
+
+    /** Spaces typed before or after a value don't count (validation runs on the trimmed values). */
+    public ProjectRequestDTO {
+        name = trim(name);
+        repositoryUrl = trim(repositoryUrl);
+        branch = trim(branch);
+        healthCheckPath = trim(healthCheckPath);
+    }
+
+    private static String trim(String value) {
+        return value == null ? null : value.trim();
+    }
 }

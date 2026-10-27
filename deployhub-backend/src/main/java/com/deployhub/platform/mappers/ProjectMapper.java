@@ -11,10 +11,10 @@ public final class ProjectMapper {
 
     public static ProjectResponseDTO toResponse(ProjectMaster project) {
         return new ProjectResponseDTO(project.getId(), project.getName(), project.getRepositoryUrl(),
-                project.getBranch(), project.getAppType(), project.getBuildCommand(), project.getStartCommand(),
+                project.getBranch(), project.getAppType(), project.getRootDirectory(), project.getBuildCommand(), project.getStartCommand(),
                 project.getAppPort(), effectivePort(project), project.getHealthCheckPath(), publicUrl(project),
                 project.isPublicLinkOn(), project.isPublicLinkOn() ? project.getPublicLinkUrl() : null,
-                project.getCreatedAt(), project.getUpdatedAt());
+                project.isFree(), project.getCreatedAt(), project.getUpdatedAt());
     }
 
     /** Address proxies are published on 127.0.0.1 only (M7 puts a public proxy in front). */
@@ -31,10 +31,26 @@ public final class ProjectMapper {
         project.setRepositoryUrl(request.repositoryUrl().trim());
         project.setBranch(request.branch());
         project.setAppType(request.appType());
+        project.setRootDirectory(normaliseFolder(request.rootDirectory()));
         project.setBuildCommand(blankToNull(request.buildCommand()));
         project.setStartCommand(blankToNull(request.startCommand()));
         project.setAppPort(request.appPort());
         project.setHealthCheckPath(blankToNull(request.healthCheckPath()));
+    }
+
+    /** "./backend/" -> "backend"; empty -> null (the repository root). The DTO pattern already rejected "..". */
+    static String normaliseFolder(String value) {
+        if (value == null) {
+            return null;
+        }
+        String folder = value.trim();
+        if (folder.startsWith("./")) {
+            folder = folder.substring(2);
+        }
+        if (folder.endsWith("/")) {
+            folder = folder.substring(0, folder.length() - 1);
+        }
+        return folder.isEmpty() ? null : folder;
     }
 
     private static String blankToNull(String value) {

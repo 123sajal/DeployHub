@@ -1,0 +1,11 @@
+{
+  "description": "Runs a demo copy of DeployHub inside DeployHub: built-in H2 database (reset on every deploy) and simulated deployments (there is no Docker inside the container).",
+  "env": {
+    "SPRING_PROFILES_ACTIVE": { "value": "local", "description": "Use the built-in H2 database inside the container" },
+    "DEPLOYHUB_EXECUTION_MODE": { "value": "SIMULATED", "description": "No Docker inside the container, so deployments are simulated" },
+    "DEPLOYHUB_SECRETS_KEY": { "generate": "secret", "description": "Encrypts the copy's environment variables" },
+    "DB_URL": { "required": false, "description": "Only for the oracle profile" },
+    "DB_USERNAME": { "required": false, "description": "Only for the oracle profile" },
+    "DB_PASSWORD": { "required": false, "description": "Only for the oracle profile" }
+  }
+}

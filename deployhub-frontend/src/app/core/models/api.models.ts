@@ -23,6 +23,8 @@ export interface Project {
   repositoryUrl: string;
   branch: string;
   appType: ApplicationType;
+  /** Folder in the repository with the app, e.g. "backend"; build and start commands run there. Null = root. */
+  rootDirectory: string | null;
   buildCommand: string | null;
   /** Null for Dockerfile projects that use their image's own start command. */
   startCommand: string | null;
@@ -38,6 +40,8 @@ export interface Project {
   publicLinkEnabled: boolean;
   /** The public link, e.g. https://xyz.trycloudflare.com, while enabled. */
   publicLink: string | null;
+  /** The user's free project (their first deployed one): its deploys cost nothing. */
+  free: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -80,11 +84,53 @@ export interface ProjectRoute {
   targetProjectName?: string;
 }
 
+/** How DeployHub can help with a variable the app needs (see the backend's EnvVarKind). */
+export type EnvVarKind =
+  | 'SECRET' | 'DATABASE' | 'DATABASE_ALIAS' | 'SETTING' | 'PLATFORM' | 'EXTERNAL' | 'LOCAL_ONLY' | 'UNKNOWN';
+
+export interface EnvRequirementItem {
+  name: string;
+  kind: EnvVarKind;
+  /** SET (has a value), PROVIDED (DeployHub sets it) or MISSING. */
+  status: 'SET' | 'PROVIDED' | 'MISSING';
+  /** False when the app has a default for it. */
+  required: boolean;
+  /** Only for SETTING: the value Fill in automatically uses. */
+  suggestedValue: string | null;
+  /** Where it was found, e.g. ".env.example" or "src/server.js". */
+  source: string;
+  help: string;
+}
+
+/** GET /api/projects/{id}/env/requirements: what the app needs, read from its repository. */
+export interface EnvRequirements {
+  items: EnvRequirementItem[];
+  databaseSuggested: boolean;
+  databasePresent: boolean;
+  missingRequired: number;
+  /** Missing variables DeployHub can fill in by itself. */
+  autoFillable: string[];
+  notes: string[];
+}
+
+/** POST /api/projects/detect: what the repository's files suggest. Any field may be null when nothing was found. */
+export interface DetectResult {
+  appType: ApplicationType | null;
+  buildCommand: string | null;
+  startCommand: string | null;
+  /** Folders that look like apps when the chosen folder has none, e.g. ["backend", "frontend"]. */
+  appFolders: string[];
+  /** Plain-language explanations: what was found and anything still to do. */
+  notes: string[];
+}
+
 export interface ProjectRequest {
   name: string;
   repositoryUrl: string;
   branch: string;
   appType: ApplicationType;
+  /** Folder in the repository with the app, e.g. "backend"; null = the repository root. */
+  rootDirectory: string | null;
   buildCommand: string | null;
   startCommand: string | null;
   appPort: number | null;
@@ -231,4 +277,34 @@ export interface DeploymentMetrics {
   cancelled: number;
   /** 0..1; null when nothing succeeded or failed in the window. */
   successRate: number | null;
+}
+
+// ---- Paid deploys (Razorpay) ----
+
+/** Prices are in the currency's smallest unit: paise for INR (4900 = ₹49). */
+export interface BillingSummary {
+  /** False = every deploy is free. */
+  enabled: boolean;
+  /** Whether this DeployHub can take payments (Razorpay keys are set on the server). */
+  paymentsConfigured: boolean;
+  pricePerDeploy: number;
+  currency: string;
+  /** Paid deploys bought and not used yet. */
+  credits: number;
+  /** True while freeProjectsLeft > 0: the next new project deployed will be free. */
+  freeProjectAvailable: boolean;
+  /** Free projects per account (e.g. 2: a backend and a frontend). */
+  freeProjects: number;
+  /** Free projects this account can still get. */
+  freeProjectsLeft: number;
+}
+
+/** What Razorpay Checkout opens with. keyId is the public key id (never the secret). */
+export interface PaymentOrder {
+  orderId: string;
+  keyId: string;
+  amount: number;
+  currency: string;
+  name: string;
+  email: string;
 }

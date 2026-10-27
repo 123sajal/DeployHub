@@ -1,0 +1,24 @@
+.narrow {
+  max-width: 640px;
+}
+
+.back {
+  color: var(--dh-text-muted);
+  font-size: 0.85rem;
+}
+
+h1 {
+  margin: 0.75rem 0 1.25rem;
+}
+
+.dh-dl {
+  margin-bottom: 1rem;
+}
+
+.secure {
+  margin: 0.9rem 0 0;
+  font-size: 0.8rem;
+  .pi {
+    font-size: 0.75rem;
+  }
+}

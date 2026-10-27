@@ -49,4 +49,12 @@ public class UserMaster {
 
     @Column(name = "last_login_at")
     private Instant lastLoginAt;
+
+    /** When a deploy last made one of the user's projects free (null = none yet). */
+    @Column(name = "free_project_claimed_at")
+    private Instant freeProjectClaimedAt;
+
+    /** How many free projects the user has used (see deployhub.billing.free-projects). Deleting one doesn't give it back. */
+    @Column(name = "free_projects_used", nullable = false)
+    private int freeProjectsUsed;
 }

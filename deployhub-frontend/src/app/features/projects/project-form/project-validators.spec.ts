@@ -1,6 +1,12 @@
 import { FormControl } from '@angular/forms';
 
-import { BRANCH_PATTERN, PROJECT_NAME_PATTERN, repositoryUrlValidator } from './project-validators';
+import {
+  APP_FOLDER_PATTERN,
+  BRANCH_PATTERN,
+  PROJECT_NAME_PATTERN,
+  normaliseAppFolder,
+  repositoryUrlValidator,
+} from './project-validators';
 
 const check = (url: string) => repositoryUrlValidator(new FormControl(url));
 
@@ -37,5 +43,20 @@ describe('name and branch patterns', () => {
     expect(PROJECT_NAME_PATTERN.test('Bad')).toBe(false);
     expect(BRANCH_PATTERN.test('feature/login-v2')).toBe(true);
     expect(BRANCH_PATTERN.test('a..b')).toBe(false);
+  });
+});
+
+describe('app folder', () => {
+  it('accepts folders inside the repository and rejects anything that leaves it', () => {
+    for (const ok of ['backend', 'apps/web', './frontend/', 'my_app-2', '']) expect(APP_FOLDER_PATTERN.test(ok)).toBe(true);
+    for (const bad of ['../secrets', '/etc', 'backend/../../x', 'a b', 'back;rm', '.git', '~/x']) {
+      expect(APP_FOLDER_PATTERN.test(bad)).toBe(false);
+    }
+  });
+
+  it('is tidied the same way as on the server', () => {
+    expect(normaliseAppFolder(' ./backend/ ')).toBe('backend');
+    expect(normaliseAppFolder('apps/web')).toBe('apps/web');
+    expect(normaliseAppFolder('  ')).toBeNull();
   });
 });

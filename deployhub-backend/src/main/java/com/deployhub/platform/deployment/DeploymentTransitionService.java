@@ -4,6 +4,7 @@ import com.deployhub.platform.models.entities.Deployment;
 import com.deployhub.platform.models.entities.DeploymentStatusChange;
 import com.deployhub.platform.models.enums.DeploymentStatus;
 import com.deployhub.platform.repositories.DeploymentStatusHistoryRepository;
+import com.deployhub.platform.repositories.PaymentRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -19,6 +20,7 @@ import java.time.Instant;
 public class DeploymentTransitionService {
 
     private final DeploymentStatusHistoryRepository history;
+    private final PaymentRepository payments;
     private final Clock clock;
 
     public void recordCreated(Deployment deployment, String reason, String actor) {
@@ -31,5 +33,8 @@ public class DeploymentTransitionService {
         Instant now = clock.instant();
         deployment.transitionTo(target, now, reason);
         history.save(new DeploymentStatusChange(deployment.getId(), from, target, reason, actor, attempt, now));
+        if (target == DeploymentStatus.FAILED || target == DeploymentStatus.CANCELLED) {
+            payments.releaseCredit(deployment.getId()); // a paid deploy that never went live gives its credit back
+        }
     }
 }
