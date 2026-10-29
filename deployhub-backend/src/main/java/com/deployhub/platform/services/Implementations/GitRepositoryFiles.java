@@ -61,14 +61,9 @@ public class GitRepositoryFiles implements IRepositoryFiles {
     }
 
     @Override
-    public Snapshot open(String repositoryUrl, String branch, boolean withSmallFiles) {
-        boolean local = allowLocalRepositories && repositoryUrl.startsWith("file://");
-        if (!local && !RepositoryUrlValidator.isAllowed(repositoryUrl)) {
-            throw new RepositoryNotReadable("That repository URL isn't allowed.");
-        }
-        if (branch == null || !BRANCH.matcher(branch).matches()) {
-            throw new RepositoryNotReadable("That isn't a valid branch name.");
-        }
+    public Snapshot open(String repositoryUrl, String branch, boolean withSmallFiles, String token) {
+        checkInput(repositoryUrl, branch);
+        Map<String, String> auth = GitSafety.authEnvironment(repositoryUrl, token);
         Path dir;
         try {
             Files.createDirectories(workspace);
@@ -79,7 +74,7 @@ public class GitRepositoryFiles implements IRepositoryFiles {
         try {
             run(dir.getParent(), FETCH_TIMEOUT, "init", "-q", dir.toString());
             run(dir, FETCH_TIMEOUT, "remote", "add", "origin", repositoryUrl.trim());
-            Result fetch = run(dir, FETCH_TIMEOUT, "fetch", "-q", "--depth", "1",
+            Result fetch = run(dir, FETCH_TIMEOUT, auth, "fetch", "-q", "--depth", "1",
                     withSmallFiles ? "--filter=blob:limit=256k" : "--filter=blob:none", "--no-tags",
                     "origin", "--end-of-options", branch);
             if (!fetch.ok()) {
@@ -87,15 +82,7 @@ public class GitRepositoryFiles implements IRepositoryFiles {
                 if (fetch.timedOut()) {
                     throw new ServiceUnavailableException("Reading the repository took too long. Try again.");
                 }
-                if (text.contains("couldn't find remote ref") || text.contains("could not find remote branch")) {
-                    throw new RepositoryNotReadable("The branch '" + branch + "' doesn't exist in this repository.");
-                }
-                if (text.contains("could not resolve host") || text.contains("unable to access")
-                        && !text.contains("returned error: 4")) {
-                    throw new ServiceUnavailableException("Couldn't reach the Git host to read the repository.");
-                }
-                throw new RepositoryNotReadable("The repository wasn't found or isn't public. DeployHub can only "
-                        + "read public repositories.");
+                throw notReadable(text, branch, !auth.isEmpty());
             }
             Result list = run(dir, READ_TIMEOUT, "ls-tree", "-r", "--name-only", "-z", "FETCH_HEAD");
             if (!list.ok()) {
@@ -107,20 +94,72 @@ public class GitRepositoryFiles implements IRepositoryFiles {
                     paths.add(path);
                 }
             }
-            return new GitSnapshot(dir, Set.copyOf(paths));
+            return new GitSnapshot(dir, Set.copyOf(paths), auth);
         } catch (RuntimeException e) {
             delete(dir);
             throw e;
         }
     }
 
+    @Override
+    public void checkAccess(String repositoryUrl, String branch, String token) {
+        checkInput(repositoryUrl, branch);
+        Map<String, String> auth = GitSafety.authEnvironment(repositoryUrl, token);
+        // refs/heads/<branch> exactly: a bare name would also match e.g. refs/heads/feature/<branch>.
+        Result result = run(workspaceDir(), FETCH_TIMEOUT, auth, "ls-remote", "--heads", "--end-of-options",
+                repositoryUrl.trim(), "refs/heads/" + branch);
+        if (!result.ok()) {
+            throw notReadable(result.text().toLowerCase(Locale.ROOT), branch, !auth.isEmpty());
+        }
+        if (result.text().isBlank()) {
+            throw new RepositoryNotReadable("The branch '" + branch + "' doesn't exist in this repository.");
+        }
+    }
+
+    private void checkInput(String repositoryUrl, String branch) {
+        boolean local = allowLocalRepositories && repositoryUrl.startsWith("file://");
+        if (!local && !RepositoryUrlValidator.isAllowed(repositoryUrl)) {
+            throw new RepositoryNotReadable("That repository URL isn't allowed.");
+        }
+        if (branch == null || !BRANCH.matcher(branch).matches()) {
+            throw new RepositoryNotReadable("That isn't a valid branch name.");
+        }
+    }
+
+    /** What went wrong, in plain words; with a token, "not found" usually means the token can't see the repository. */
+    private static RuntimeException notReadable(String text, String branch, boolean withToken) {
+        if (text.contains("couldn't find remote ref") || text.contains("could not find remote branch")) {
+            return new RepositoryNotReadable("The branch '" + branch + "' doesn't exist in this repository.");
+        }
+        if (text.contains("could not resolve host") || text.contains("unable to access")
+                && !text.contains("returned error: 4") && !text.contains("authentication")) {
+            return new ServiceUnavailableException("Couldn't reach the Git host to read the repository.");
+        }
+        if (withToken) {
+            return new RepositoryNotReadable("The access token doesn't work for this repository: it may be wrong or "
+                    + "expired, or it doesn't have read access to this repository.");
+        }
+        return new RepositoryNotReadable("The repository wasn't found or isn't public. If it's private, add an "
+                + "access token (Private repository on the project form).");
+    }
+
+    private Path workspaceDir() {
+        try {
+            return Files.createDirectories(workspace);
+        } catch (IOException e) {
+            throw new ServiceUnavailableException("Could not prepare a folder to read the repository.", e);
+        }
+    }
+
     private final class GitSnapshot implements Snapshot {
         private final Path dir;
         private final Set<String> paths;
+        private final Map<String, String> auth;
 
-        GitSnapshot(Path dir, Set<String> paths) {
+        GitSnapshot(Path dir, Set<String> paths, Map<String, String> auth) {
             this.dir = dir;
             this.paths = paths;
+            this.auth = auth;
         }
 
         @Override
@@ -133,7 +172,7 @@ public class GitRepositoryFiles implements IRepositoryFiles {
             if (!paths.contains(path) || !PATH.matcher(path).matches()) {
                 return Optional.empty();
             }
-            Result file = run(dir, READ_TIMEOUT, "cat-file", "blob", "FETCH_HEAD:" + path);
+            Result file = run(dir, READ_TIMEOUT, auth, "cat-file", "blob", "FETCH_HEAD:" + path);
             return file.ok() && !file.truncated() ? Optional.of(file.text()) : Optional.empty();
         }
 
@@ -150,12 +189,18 @@ public class GitRepositoryFiles implements IRepositoryFiles {
     }
 
     private Result run(Path workingDir, Duration timeout, String... args) {
+        return run(workingDir, timeout, Map.of(), args);
+    }
+
+    private Result run(Path workingDir, Duration timeout, Map<String, String> auth, String... args) {
         List<String> command = new ArrayList<>();
         command.add(git);
         command.addAll(GitSafety.flags(allowLocalRepositories));
         command.addAll(List.of(args));
         ProcessBuilder builder = new ProcessBuilder(command).directory(workingDir.toFile()).redirectErrorStream(true);
-        for (Map.Entry<String, String> e : GitSafety.environment().entrySet()) {
+        Map<String, String> env = new java.util.HashMap<>(GitSafety.environment());
+        env.putAll(auth);
+        for (Map.Entry<String, String> e : env.entrySet()) {
             if (e.getValue() == null) {
                 builder.environment().remove(e.getKey());
             } else {

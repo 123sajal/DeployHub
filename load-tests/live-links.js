@@ -144,7 +144,7 @@ function ensureAccounts() {
       tags: { kind: 'setup' },
       responseCallback: http.expectedStatuses(200, 201, 409, 429),
     });
-    const reg = post('/api/auth/register', { displayName: `Live Link User ${n}`, email: email(n), password: PASSWORD });
+    const reg = post('/api/auth/register', { displayName: `Live Link User ${letters(n)}`, email: email(n), password: PASSWORD });
     if (reg.status === 201) { created++; continue; }
     if (reg.status === 409) continue;
     // 429: sign-ups are throttled, and DeployHub checks that before "already exists", so try logging in once.
@@ -274,4 +274,11 @@ export function setup() {
   requireFreeDeploys();
   console.log(`${USERS} accounts ready (${created} new). They now deploy ${APP.repositoryUrl} at once on ${BASE}`
     + (KEEP ? ' (apps kept running)' : ''));
+}
+
+// Names may contain only letters and spaces: 1 -> "A", 26 -> "Z", 27 -> "AA".
+function letters(n) {
+  let out = '';
+  for (let i = Number(n); i > 0; i = Math.floor((i - 1) / 26)) out = String.fromCharCode(65 + ((i - 1) % 26)) + out;
+  return out || 'A';
 }

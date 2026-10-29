@@ -7,6 +7,7 @@ import { ButtonModule } from 'primeng/button';
 import { MessageModule } from 'primeng/message';
 import { Subscription, forkJoin, switchMap, takeWhile, timer } from 'rxjs';
 
+import { AssistantHintComponent } from '../../../core/components/assistant/assistant-hint.component';
 import { PageStateComponent } from '../../../core/components/shared/page-state.component';
 import { SimulatedBadgeComponent } from '../../../core/components/shared/simulated-badge.component';
 import { StatusBadgeComponent } from '../../../core/components/shared/status-badge.component';
@@ -23,7 +24,7 @@ const POLL_MS = 2000;
 
 @Component({
   selector: 'app-deployment-detail',
-  imports: [RouterLink, DatePipe, ButtonModule, MessageModule, PageStateComponent, StatusBadgeComponent, SimulatedBadgeComponent, LogViewerComponent],
+  imports: [RouterLink, DatePipe, ButtonModule, MessageModule, PageStateComponent, StatusBadgeComponent, SimulatedBadgeComponent, LogViewerComponent, AssistantHintComponent],
   templateUrl: './deployment-detail.component.html',
   styleUrl: './deployment-detail.component.scss',
 })

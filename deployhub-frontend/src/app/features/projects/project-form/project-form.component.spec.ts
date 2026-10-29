@@ -7,7 +7,7 @@ import { ProjectApiService } from '../../../core/services/api/project-api.servic
 import { DEFAULT_COMMANDS, ProjectFormComponent } from './project-form.component';
 
 describe('ProjectFormComponent', () => {
-  const api = { create: vi.fn(), update: vi.fn(), get: vi.fn(), detect: vi.fn() };
+  const api = { create: vi.fn(), update: vi.fn(), get: vi.fn(), detect: vi.fn(), removeRepositoryToken: vi.fn() };
 
   async function setup() {
     api.create.mockReset();
@@ -56,6 +56,8 @@ describe('ProjectFormComponent', () => {
       branch: 'main',
       appType: 'NODE_JS',
       rootDirectory: '',
+      isPrivate: false,
+      repositoryToken: '',
       buildCommand: '',
       startCommand: 'node server.js',
       appPort: null,
@@ -88,7 +90,7 @@ describe('ProjectFormComponent', () => {
     expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(['/app/projects', 9]);
     expect(api.create.mock.calls[0][0].startCommand).toBe('npm start'); // suggested from app type
     expect(api.create.mock.calls[0][0]).toEqual(
-      expect.objectContaining({ appPort: null, healthCheckPath: null, rootDirectory: null }),
+      expect.objectContaining({ appPort: null, healthCheckPath: null, rootDirectory: null, repositoryToken: null }),
     );
   });
 
@@ -204,6 +206,7 @@ describe('ProjectFormComponent', () => {
       api.get.mockReturnValue(of({
         id: 4, name: 'ems', repositoryUrl: 'https://github.com/acme/ems', branch: 'main', appType: 'NODE_JS',
         rootDirectory: 'backend', buildCommand: 'npm ci', startCommand: 'npm start', appPort: null, healthCheckPath: null,
+        privateRepository: false, repositoryTokenUpdatedAt: null,
       }));
       api.create.mockReset();
       await TestBed.configureTestingModule({
@@ -249,7 +252,7 @@ describe('ProjectFormComponent', () => {
       c.detect();
       fixture.detectChanges();
 
-      expect(api.detect).toHaveBeenCalledWith('https://github.com/123sajal/Employee-Management-.git', 'main', 'backend');
+      expect(api.detect).toHaveBeenCalledWith('https://github.com/123sajal/Employee-Management-.git', 'main', 'backend', null, null);
       expect(c.form.controls.appType.value).toBe('NODE_JS');
       expect(c.form.controls.buildCommand.value).toBe('npm ci');
       expect(c.form.controls.startCommand.value).toBe('npm run db:setup && npm start');
@@ -293,7 +296,7 @@ describe('ProjectFormComponent', () => {
       c.chooseAppFolder('backend');
 
       expect(c.form.controls.rootDirectory.value).toBe('backend');
-      expect(api.detect).toHaveBeenLastCalledWith('https://github.com/acme/ems', 'main', 'backend');
+      expect(api.detect).toHaveBeenLastCalledWith('https://github.com/acme/ems', 'main', 'backend', null, null);
       expect(c.form.controls.startCommand.value).toBe('npm run db:setup && npm start');
     });
 
@@ -306,6 +309,127 @@ describe('ProjectFormComponent', () => {
 
       expect(api.detect).not.toHaveBeenCalled();
       expect(c.detectError()).toContain('repository URL');
+    });
+  });
+
+  describe('private repositories', () => {
+    type Form = { form: ProjectFormComponent['form']; detect(force?: boolean): void };
+
+    it('sends the access token only when the repository is marked private', async () => {
+      const fixture = await setup();
+      const el: HTMLElement = fixture.nativeElement;
+      const c = fixture.componentInstance as unknown as Form;
+      c.form.patchValue({ appType: 'NODE_JS', isPrivate: true });
+      fixture.detectChanges();
+      fill(el, 'name', 'secret-app');
+      fill(el, 'repositoryUrl', 'https://github.com/acme/secret-app');
+      fill(el, 'repositoryToken', ' github_pat_abc ');
+      expect(el.textContent).toContain('Contents: Read-only');
+      api.create.mockReturnValue(of({ id: 2, name: 'secret-app' }));
+
+      el.querySelector('form')!.dispatchEvent(new Event('submit'));
+      await fixture.whenStable();
+      expect(api.create.mock.calls[0][0].repositoryToken).toBe('github_pat_abc');
+      expect(api.create.mock.calls[0][0].isPrivate).toBeUndefined();
+
+      api.create.mockClear();
+      c.form.patchValue({ isPrivate: false });
+      el.querySelector('form')!.dispatchEvent(new Event('submit'));
+      await fixture.whenStable();
+      expect(api.create.mock.calls[0][0].repositoryToken).toBeNull();
+    });
+
+    it('detection uses the typed token, and a repository it cannot read opens the token box', async () => {
+      const fixture = await setup();
+      const el: HTMLElement = fixture.nativeElement;
+      const c = fixture.componentInstance as unknown as Form;
+      fill(el, 'repositoryUrl', 'https://github.com/acme/secret-app');
+      api.detect.mockReset().mockReturnValue(of({
+        appType: null, buildCommand: null, startCommand: null, appFolders: [],
+        notes: ["The repository wasn't found or isn't public. If it's private, add an access token."],
+      }));
+
+      c.detect();
+
+      expect(c.form.controls.isPrivate.value).toBe(true);
+      c.form.controls.repositoryToken.setValue('github_pat_xyz');
+      c.detect();
+      expect(api.detect).toHaveBeenLastCalledWith('https://github.com/acme/secret-app', 'main', null, 'github_pat_xyz', null);
+    });
+
+    it('on the Edit page a saved token is kept unless replaced, and can be removed', async () => {
+      api.get.mockReturnValue(of({
+        id: 4, name: 'secret-app', repositoryUrl: 'https://github.com/acme/secret-app', branch: 'main', appType: 'NODE_JS',
+        rootDirectory: null, buildCommand: 'npm ci', startCommand: 'npm start', appPort: null, healthCheckPath: null,
+        privateRepository: true, repositoryTokenUpdatedAt: '2026-10-27T09:00:00Z',
+      }));
+      await TestBed.configureTestingModule({
+        imports: [ProjectFormComponent],
+        providers: [provideRouter([]), MessageService, { provide: ProjectApiService, useValue: api }],
+      }).compileComponents();
+      const fixture = TestBed.createComponent(ProjectFormComponent);
+      fixture.componentRef.setInput('id', '4');
+      await fixture.whenStable();
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.textContent).toContain('A token is saved');
+      api.removeRepositoryToken.mockReturnValue(of({}));
+
+      [...el.querySelectorAll('button')].find((b) => b.textContent?.includes('Remove token'))!.click();
+
+      expect(api.removeRepositoryToken).toHaveBeenCalledWith(4);
+      const c = fixture.componentInstance as unknown as Form;
+      expect(c.form.controls.isPrivate.value).toBe(false);
+    });
+
+    it('ticking private without a token, and none saved, is stopped with a message (review #9)', async () => {
+      const fixture = await setup();
+      const el: HTMLElement = fixture.nativeElement;
+      const c = fixture.componentInstance as unknown as Form;
+      c.form.patchValue({ appType: 'NODE_JS', isPrivate: true });
+      fixture.detectChanges(); // ticking the box shows the token field, as on screen
+      fill(el, 'name', 'secret-app');
+      fill(el, 'repositoryUrl', 'https://github.com/acme/secret-app');
+      api.create.mockClear();
+
+      el.querySelector('form')!.dispatchEvent(new Event('submit'));
+      fixture.detectChanges();
+
+      expect(api.create).not.toHaveBeenCalled();
+      expect(el.querySelector('#token-error')?.textContent).toContain('Paste the access token');
+    });
+
+    it('on the Edit page, unticking private removes the saved token, and a new URL warns (review #2, #8)', async () => {
+      api.get.mockReturnValue(of({
+        id: 4, name: 'secret-app', repositoryUrl: 'https://github.com/acme/secret-app', branch: 'main', appType: 'NODE_JS',
+        rootDirectory: null, buildCommand: 'npm ci', startCommand: 'npm start', appPort: null, healthCheckPath: null,
+        privateRepository: true, repositoryTokenUpdatedAt: '2026-10-27T09:00:00Z',
+      }));
+      await TestBed.configureTestingModule({
+        imports: [ProjectFormComponent],
+        providers: [provideRouter([]), MessageService, { provide: ProjectApiService, useValue: api }],
+      }).compileComponents();
+      vi.spyOn(TestBed.inject(Router), 'navigate').mockResolvedValue(true);
+      const fixture = TestBed.createComponent(ProjectFormComponent);
+      fixture.componentRef.setInput('id', '4');
+      await fixture.whenStable();
+      fixture.detectChanges();
+      const el: HTMLElement = fixture.nativeElement;
+      const c = fixture.componentInstance as unknown as Form;
+
+      fill(el, 'repositoryUrl', 'https://github.com/acme/renamed');
+      fixture.detectChanges();
+      expect(el.textContent).toContain('the saved token belongs to the old repository');
+
+      fill(el, 'repositoryUrl', 'https://github.com/acme/secret-app');
+      c.form.controls.isPrivate.setValue(false);
+      api.update.mockReset().mockReturnValue(of({ id: 4, name: 'secret-app' }));
+      api.removeRepositoryToken.mockReset().mockReturnValue(of({ id: 4, name: 'secret-app' }));
+      el.querySelector('form')!.dispatchEvent(new Event('submit'));
+      await fixture.whenStable();
+
+      expect(api.update).toHaveBeenCalledTimes(1);
+      expect(api.removeRepositoryToken).toHaveBeenCalledWith(4);
     });
   });
 });

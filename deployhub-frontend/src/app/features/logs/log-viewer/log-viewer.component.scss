@@ -48,7 +48,8 @@
   min-height: 180px;
   overflow: auto;
   padding: 0.75rem 0;
-  background: #07080c;
+  background: var(--dh-term-bg);
+  color: var(--dh-term-text);
   font-size: 0.8rem;
   line-height: 1.65;
 }
@@ -59,13 +60,13 @@
   gap: 0.75rem;
   padding: 0 1rem;
   &:hover {
-    background: rgba(255, 255, 255, 0.03);
+    background: rgba(255, 255, 255, 0.04);
   }
   time {
-    color: var(--dh-text-faint);
+    color: var(--dh-term-faint);
   }
   .lvl {
-    color: var(--dh-info);
+    color: var(--dh-term-info);
   }
   .msg {
     white-space: pre-wrap;
@@ -73,13 +74,13 @@
   }
   &[data-level='WARN'] .lvl,
   &[data-level='WARN'] .msg {
-    color: var(--dh-warning);
+    color: var(--dh-term-warning);
   }
   &[data-level='ERROR'] {
-    background: rgba(248, 113, 113, 0.08);
+    background: rgba(248, 113, 113, 0.1);
     .lvl,
     .msg {
-      color: var(--dh-danger);
+      color: var(--dh-term-danger);
     }
   }
 }

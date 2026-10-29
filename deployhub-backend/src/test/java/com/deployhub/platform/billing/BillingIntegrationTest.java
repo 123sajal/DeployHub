@@ -146,6 +146,35 @@ class BillingIntegrationTest extends IntegrationTestSupport {
     }
 
     @Test
+    void aVerifiedStudentPaysThePriceMinusTheStudentDiscount() throws Exception {
+        userRepository.findById(alice.id()).ifPresent(user -> {
+            user.setStudentVerifiedUntil(java.time.LocalDate.now().plusMonths(6));
+            userRepository.save(user);
+        });
+        mockMvc.perform(get("/api/billing"))
+                .andExpect(jsonPath("$.pricePerDeploy").value(4900))
+                .andExpect(jsonPath("$.yourPrice").value(4400))
+                .andExpect(jsonPath("$.verifiedStudent").value(true));
+        mockMvc.perform(post("/api/billing/orders")).andExpect(jsonPath("$.amount").value(4400));
+        assertThat(razorpay.orderAmounts).containsExactly(4400L);
+
+        useUpFreeProjects();
+        mockMvc.perform(post("/api/projects/{id}/deployments", createProject("paid-app", "npm ci")))
+                .andExpect(status().isPaymentRequired())
+                .andExpect(jsonPath("$.detail").value(containsString("₹44")))
+                .andExpect(jsonPath("$.price").value(4400));
+    }
+
+    @Test
+    void anExpiredStudentCheckPaysTheFullPrice() throws Exception {
+        userRepository.findById(alice.id()).ifPresent(user -> {
+            user.setStudentVerifiedUntil(java.time.LocalDate.now().minusDays(2));
+            userRepository.save(user);
+        });
+        mockMvc.perform(post("/api/billing/orders")).andExpect(jsonPath("$.amount").value(4900));
+    }
+
+    @Test
     void aWrongSignatureCreditsNothing() throws Exception {
         String orderId = createOrder(mockMvc);
         razorpay.pay(orderId, "pay_good1", "captured", 4900);

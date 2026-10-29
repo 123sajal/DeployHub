@@ -8,6 +8,7 @@ import { MessageModule } from 'primeng/message';
 
 import { ApiError } from '../../../core/models/api.models';
 import { AuthService } from '../../../core/services/auth/auth.service';
+import { normalizePersonName, personName } from '../../../core/utils/person-name';
 import { safeReturnUrl } from '../../../core/utils/safe-return-url';
 import { authErrorMessage } from '../auth-errors';
 
@@ -28,10 +29,13 @@ function passwordsMatch(group: AbstractControl): ValidationErrors | null {
   const confirm = group.get('confirmPassword')?.value;
   return confirm && password !== confirm ? { mismatch: true } : null;
 }
+import { LogoComponent } from '../../../core/components/shared/logo.component';
+
+import { AuthBackdropComponent } from '../../../core/components/shared/auth-backdrop.component';
 
 @Component({
   selector: 'app-signup',
-  imports: [ReactiveFormsModule, RouterLink, ButtonModule, InputTextModule, MessageModule],
+  imports: [ReactiveFormsModule, RouterLink, ButtonModule, InputTextModule, MessageModule, LogoComponent, AuthBackdropComponent],
   templateUrl: './signup.component.html',
 })
 export class SignupComponent {
@@ -49,7 +53,7 @@ export class SignupComponent {
 
   protected readonly form = this.fb.nonNullable.group(
     {
-      displayName: ['', [Validators.required, Validators.maxLength(100)]],
+      displayName: ['', [Validators.required, Validators.maxLength(100), personName]],
       email: ['', [Validators.required, Validators.email, Validators.maxLength(254)]],
       password: ['', [Validators.required, passwordPolicy]],
       confirmPassword: ['', [Validators.required]],
@@ -69,6 +73,7 @@ export class SignupComponent {
     if (errors['email']) return 'Enter a valid email address';
     if (errors['maxlength']) return `Must be at most ${errors['maxlength'].requiredLength} characters`;
     if (errors['policy']) return errors['policy'];
+    if (errors['personName']) return errors['personName'];
     return 'Invalid value';
   }
 
@@ -86,7 +91,7 @@ export class SignupComponent {
     }
     this.submitting.set(true);
     const { displayName, email, password } = this.form.getRawValue();
-    this.auth.register({ displayName: displayName.trim(), email: email.trim(), password }).subscribe({
+    this.auth.register({ displayName: normalizePersonName(displayName), email: email.trim(), password }).subscribe({
       next: (user) => {
         this.messages.add({ severity: 'success', summary: `Welcome to DeployHub, ${user.displayName}` });
         this.router.navigateByUrl(safeReturnUrl(this.returnUrl()));

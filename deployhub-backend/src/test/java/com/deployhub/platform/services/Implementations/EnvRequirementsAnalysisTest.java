@@ -117,13 +117,15 @@ class EnvRequirementsAnalysisTest {
 
     @Test
     void pythonEnvironReadsAreRequiredAndGetenvIsOptional() {
-        files.put("app.py", "import os\nKEY = os.environ['SECRET_KEY']\nDEBUG = os.getenv('DEBUG_MODE', '0')\n");
+        files.put("app.py", "import os\nKEY = os.environ['SECRET_KEY']\nDEBUG = os.getenv('DEBUG_MODE', '0')\n"
+                + "DB = os.getenv('DATABASE_URI')\n");
 
         Map<String, EnvRequirementsService.Needed> needed = analyse("");
 
         assertThat(needed.get("SECRET_KEY").kind()).isEqualTo(EnvVarKind.SECRET);
         assertThat(needed.get("SECRET_KEY").required()).isTrue();
-        assertThat(needed.get("DEBUG_MODE").required()).isFalse();
+        assertThat(needed.get("DEBUG_MODE").required()).as("explicit default").isFalse();
+        assertThat(needed.get("DATABASE_URI").required()).as("os.getenv without a default returns None").isTrue();
     }
 
     @Test
@@ -175,5 +177,45 @@ class EnvRequirementsAnalysisTest {
         assertThat(analysis.needed()).filteredOn(EnvRequirementsService.Needed::required)
                 .extracting(EnvRequirementsService.Needed::name)
                 .containsExactlyInAnyOrder("SPRING_PROFILES_ACTIVE", "DEPLOYHUB_EXECUTION_MODE", "DEPLOYHUB_SECRETS_KEY");
+    }
+
+    @Test
+    void anExampleVariableTheCodeReadsWithADefaultIsOptionalAndCommentBlocksStayWhole() {
+        files.put("deployhub-backend/.env.example", """
+                # Paid deploys: Razorpay API keys (Dashboard > Account & Settings > API Keys). rzp_test_... = test mode, no real
+                # money. The secret stays on the server; never put it in the frontend or commit it.
+                RAZORPAY_KEY_ID=rzp_test_<your key id>
+                RAZORPAY_KEY_SECRET=<your key secret>
+
+                # Encrypts project environment variables.
+                DEPLOYHUB_SECRETS_KEY=<paste>
+                """);
+        files.put("deployhub-backend/src/main/resources/application.properties", """
+                deployhub.billing.razorpay.key-id=${RAZORPAY_KEY_ID:}
+                deployhub.billing.razorpay.key-secret=${RAZORPAY_KEY_SECRET:}
+                deployhub.secrets.key=${DEPLOYHUB_SECRETS_KEY}
+                """);
+
+        Map<String, EnvRequirementsService.Needed> needed = analyse("deployhub-backend");
+
+        assertThat(needed.get("RAZORPAY_KEY_ID").required()).as("the code has a default").isFalse();
+        assertThat(needed.get("RAZORPAY_KEY_SECRET").required()).isFalse();
+        assertThat(needed.get("RAZORPAY_KEY_SECRET").help())
+                .startsWith("Paid deploys: Razorpay API keys").contains("no real money. The secret stays")
+                .doesNotContain("commit it..");
+        assertThat(needed.get("DEPLOYHUB_SECRETS_KEY").required()).as("no default in the code").isTrue();
+        assertThat(needed.get("DEPLOYHUB_SECRETS_KEY").help()).startsWith("Encrypts project environment variables. Any");
+    }
+
+    /** Review #3: a variable from .env.example read with os.getenv("X") (no default) must stay required. */
+    @Test
+    void anExampleVariableReadWithGetenvWithoutADefaultStaysRequired() {
+        files.put(".env.example", "SECRET_KEY=change-me\nFLASK_DEBUG=0\n");
+        files.put("app.py", "import os\nSECRET = os.getenv('SECRET_KEY')\nDEBUG = os.getenv('FLASK_DEBUG', '0')\n");
+
+        Map<String, EnvRequirementsService.Needed> needed = analyse("");
+
+        assertThat(needed.get("SECRET_KEY").required()).isTrue();
+        assertThat(needed.get("FLASK_DEBUG").required()).isFalse();
     }
 }

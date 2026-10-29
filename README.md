@@ -70,10 +70,10 @@ No cloud account needed: [docs/oracle-setup.md](docs/oracle-setup.md) shows how 
 ## Tests and builds
 
 ```bash
-cd ~/Desktop/DeployHub/deployhub-backend && ./mvnw test                # 284 tests on H2 (no Docker needed; uses the simulator)
+cd ~/Desktop/DeployHub/deployhub-backend && ./mvnw test                # 312 tests on H2 (no Docker needed; uses the simulator)
 cd ~/Desktop/DeployHub/deployhub-backend && ./mvnw test -Poracle-it     # 140 tests on real Oracle Free (needs Docker running)
 cd ~/Desktop/DeployHub/deployhub-backend && ./mvnw test -Pdocker-it     # 7 tests: real git, build/run, address proxy, MySQL isolation
-cd ~/Desktop/DeployHub/deployhub-frontend && npx ng test --watch=false   # 133 Vitest tests
+cd ~/Desktop/DeployHub/deployhub-frontend && npx ng test --watch=false   # 141 Vitest tests
 cd ~/Desktop/DeployHub/deployhub-frontend && npx ng build
 ```
 
@@ -105,7 +105,7 @@ stops with that message otherwise).
 
 | Area | Status |
 |------|--------|
-| Landing page, responsive dark dashboard, projects, deployments, settings UI | ✅ Implemented |
+| Landing page, responsive dashboard, projects, deployments, settings UI; light warm-orange theme by default with a dark mode switch (remembered per device) | ✅ Implemented (theme 2026-10-28) |
 | Project CRUD, search, app-type filter, pagination, validation | ✅ Implemented |
 | Repository URL allowlist (SSRF guard: https only, github/gitlab/bitbucket, no credentials/ports) | ✅ Implemented |
 | Deployment state machine `QUEUED → BUILDING → STARTING → LIVE → SUPERSEDED`, `FAILED`/`CANCELLED` terminal | ✅ Implemented and tested |
@@ -138,7 +138,9 @@ stops with that message otherwise).
 | CSRF protection, session-fixation defence, HttpOnly/SameSite cookies | ✅ Milestone 3 |
 | Login throttling (per email+IP and per IP) and sign-up limit per IP | ✅ Milestone 3 |
 | Audit log (`audit_events`: sign-ups, logins, failures, logouts, project/deployment actions) | ✅ Milestone 3 |
-| Profile editing, password change/reset, email verification | ⏳ Later |
+| AI assistant: sign-up as a conversation (email proven with a code, typo suggestions), "Ask the assistant" chat, pop-up explanations of failed deployments, missing settings, failed payments and refused imports | ✅ 2026-10-28 (ADR 0015). 🟡 Needs `GEMINI_API_KEY` (free tier, default) or `ANTHROPIC_API_KEY`; without one, built-in answers |
+| Student discount: verify with a student ID photo (read by AI, never stored; not on Gemini's free tier) or a college email code; Rs 5 off each paid deploy | ✅ 2026-10-28 |
+| Profile editing, password change | ⏳ Later |
 | Environment variables per project: encrypted (AES-256-GCM), write-only, masked in logs, passed as `-e NAME` | ✅ Milestone 6 |
 | Fixed address per project (`http://localhost:19xxx`) via a small nginx proxy; zero-downtime switch on redeploy | ✅ Milestone 6 |
 | Routes: send a path (e.g. `/api`) of a project's address to another project's live app (no CORS needed) | ✅ Milestone 6 |
@@ -158,7 +160,16 @@ stops with that message otherwise).
 | POST | `/api/auth/reset-password` | Public. `{email, code, newPassword}` → 204. 400 with `errors.code` if the code is wrong, used, expired or out of its 5 guesses |
 | POST | `/api/auth/logout` | Ends the session → 204, and hands out a fresh CSRF token so the user can log in again without reloading |
 | GET | `/api/auth/csrf` | Public. 204 with a fresh `XSRF-TOKEN` cookie (used by the frontend if a write was rejected for a missing token) |
-| GET | `/api/auth/me` | The logged-in user, or 401 |
+| GET | `/api/auth/me` | The logged-in user (with `occupation`, `emailVerified`, `studentVerifiedUntil`, `studentVerifiedBy`), or 401 |
+| PATCH | `/api/auth/me` | `{"occupation": "STUDENT" or "PROFESSIONAL"}` |
+| GET | `/api/assistant/status` | Public. `{aiAvailable, idCardCheck}`: key set and budget left; student photos can be checked |
+| POST | `/api/assistant/signup/check` | Public. `{field: NAME or EMAIL, value}` → `{ok, value, message, suggestion}` (no AI, no cost) |
+| POST | `/api/assistant/signup/email-code` | Public. `{email}` → 202 and a 6-digit code by email; 409 if the email has an account; 429 after 5 per email / 20 per IP per hour |
+| POST | `/api/assistant/signup/email-code/verify` | Public. `{email, code}` → `{proof, expiresAt}`; send `emailProof` (and optional `occupation`) with `/api/auth/register` |
+| POST | `/api/assistant/chat` | Public. `{page, messages: [{role: USER or ASSISTANT, text}]}` (≤ 12, last = USER) → `{text, source: AI or BUILT_IN, notice}` |
+| POST | `/api/assistant/explain` | `{topic: DEPLOYMENT_FAILED (deploymentId) or MISSING_SETTINGS / PAYMENT_FAILED / IMPORT_REFUSED (errorText, projectId)}` → same reply; a deployment's explanation is saved (`saved: true` the next time) |
+| POST | `/api/students/verify/id-card` | multipart `file` (JPG/PNG ≤ 5 MB) + `consent=true` → `{verified, validUntil, method, message}`; 400 `errors.file` with what to fix; 503 without the AI |
+| POST | `/api/students/verify/college-email/code`, `/college-email` | `{email}` (must end in .ac.in/.edu/.edu.in) then `{email, code}` → verified for a year |
 | GET | `/api/health` | Public. DB connectivity, active profile, execution mode |
 | GET | `/api/projects?search=&appType=&page=&size=` | size ≤ 100 |
 | POST/GET/PUT/DELETE | `/api/projects[/{id}]` | DELETE is 409 while a deployment is in progress |
@@ -170,6 +181,8 @@ stops with that message otherwise).
 | PUT / DELETE | `/api/projects/{id}/env/{NAME}` | `{"value": "..."}`; encrypted before storing; applies at the next deployment. `PORT` is reserved |
 | GET / POST / DELETE | `/api/projects/{id}/database` | One-click MySQL database: 204 if none; POST creates it and returns the password once (503 if Docker is down); DELETE drops it with all data |
 | GET / POST / DELETE | `/api/projects/{id}/public-link` | Public internet link: POST turns it on (project must be live; 409 otherwise), DELETE turns it off |
+| POST | `/api/projects/{id}/database/import` | multipart `file` (.sql, ≤ 50 MB) and `replace` (true = delete the current data first) → `{tablesBefore, tablesAfter, message}`; 409 when the database has tables and `replace` is false; 400 `errors.file` with MySQL's message |
+| GET | `/api/projects/{id}/database/export` | the database as a `.sql` download |
 | POST | `/api/projects/{id}/database/reset-password` | New password (returned once); DB_PASSWORD and DATABASE_URL updated |
 | GET / PUT | `/api/projects/{id}/routes` | `{"routes":[{"pathPrefix":"/api","targetProjectId":12}]}` replaces all routes; the address updates at once |
 | DELETE | `/api/deployments/{id}` | 204. Only FAILED, CANCELLED or SUPERSEDED (with its logs, history and job); 409 for the LIVE one or one in progress |
@@ -177,6 +190,7 @@ stops with that message otherwise).
 | GET | `/api/deployments/{id}/history` | Every status change (who/when/why/attempt) plus the queue job's attempts and next retry |
 | GET | `/api/deployments/{id}/logs?after=<cursor>&limit=` | Returns `nextCursor`, `hasMore` and `deploymentStatus` |
 | GET | `/api/deployments/{id}/logs/stream?after=<cursor>` | `text/event-stream`. Events: `log` (id = cursor), `status`, `end`. Honours `Last-Event-ID`. 429 beyond 5 streams per user |
+| DELETE | `/api/projects/{id}/repository-token` | Forgets the access token of a private repository (`repositoryToken` on POST/PUT `/api/projects` sets it, write-only; the response only says `privateRepository: true`) |
 | POST | `/api/projects/detect` | `{repositoryUrl, branch, rootDirectory}` → suggested `appType`, `buildCommand`, `startCommand`, `appFolders`, `notes` (nothing is saved). 429 after 20 per minute |
 | GET | `/api/projects/{id}/env/requirements` | The variables the app needs (from its repository), each with `kind`, `status` (SET/PROVIDED/MISSING), `required`, `help`; plus `autoFillable`, `databaseSuggested` |
 | POST | `/api/projects/{id}/env/requirements/fill` | `{names:[...]}`: fills those missing variables where DeployHub can (generated secrets, example values, database values); never overwrites a set value |
@@ -192,6 +206,9 @@ All endpoints except register, login, forgot/reset password and health need a lo
 the `X-XSRF-TOKEN` header matching the `XSRF-TOKEN` cookie (Angular does this automatically).
 
 ## Paid deploys (Razorpay)
+> Switched off from 2026-10-27 to 2026-10-28 (`deployhub.billing.enabled=false`); **on again since 2026-10-28**.
+> Deploys made while it was off didn't use up free projects.
+
 - **Your first 2 projects are free** (`deployhub.billing.free-projects`), e.g. a backend and a frontend. The
   first two projects you deploy become free projects; deploying them again (after code changes) stays free.
   Deleting one doesn't give it back. Projects that existed before billing stay free.
@@ -253,6 +270,20 @@ curl -s localhost:8080/actuator/prometheus | grep deployhub_
 is the throughput), `deployhub_jobs_retries_total`, `deployhub_deployments_duration_seconds{status}`. Counters and timers
 are per process and start from zero on restart; Prometheus adds them up across processes.
 
+### Private repositories (access token)
+Tick **This repository is private** on the project form and paste a read-only access token; the form links to
+where each host makes one:
+- **GitHub:** a fine-grained token (Settings → Developer settings → Fine-grained tokens) for *only this repository*
+  with *Contents: Read-only*.
+- **GitLab:** a personal access token with the scope `read_repository`.
+- **Bitbucket:** the repository's *Repository settings → Access tokens*, *Repositories: Read*.
+
+DeployHub tries the token against the repository before saving it (a wrong or too-narrow token is reported on the
+form), stores it encrypted (AES-256-GCM with `DEPLOYHUB_SECRETS_KEY`, like environment variables), never returns or
+logs it, and uses it only to read that repository: deploys, Detect from repository and "What this app needs". git gets
+it as an `Authorization` header in its environment (`GIT_CONFIG_*`), sent only to that repository's host, never on the
+command line. Changing the repository URL forgets the token; **Remove token** on the Edit page does too. See ADR 0013.
+
 ### Detect from repository (the right commands, automatically)
 On a new project, as soon as the repository URL is filled in, DeployHub reads the repository's files and fills in
 the application type and commands that fit **that** project; **Detect from repository** re-runs it (New and Edit).
@@ -262,7 +293,7 @@ has no app it lists the folders that do (`backend`, `frontend`), and one click p
 | It looks at | And decides |
 |---|---|
 | `package.json` dependencies and scripts | Angular / Vite / React / Next / Node backend; `npm run build` only if a `build` script exists; database scripts (`db:setup`, `migrate`, ...) run before start |
-| lock files | `npm ci` (package-lock.json), `yarn`, `pnpm`, or `npm install` |
+| lock files | `(npm ci \|\| npm install)` with package-lock.json (DeployHub also rewrites a plain `npm ci` in any build command this way) (falls back by itself when the lock file was made by another npm version), the same for yarn/pnpm, or `npm install` |
 | `angular.json` | the exact output folder, e.g. `dist/ems-frontend/browser` |
 | `pom.xml` / `build.gradle` + wrappers | Maven/Gradle commands; warns when the wrapper is missing |
 | `requirements.txt`, `manage.py`, `main.py`/`app.py` | Django / FastAPI / Flask start commands; warns about missing gunicorn/uvicorn |
@@ -321,6 +352,38 @@ inside that folder, so plain commands work: `npm ci` and `npm start`, no `cd bac
 deployment straight away with a clear message. For Dockerfile projects, the folder's own `Dockerfile` is built with
 that folder as its context. Empty = the repository's main folder (as before).
 
+### AI assistant and student discount
+
+- **Provider:** `deployhub.assistant.provider=gemini` (default, Google, free tier) or `claude` (Anthropic, paid).
+- **Gemini (free):** create a key at aistudio.google.com (Get API key), put `GEMINI_API_KEY=...` in
+  `deployhub-backend/.env`, restart the backend. Models: `gemini-3.5-flash-lite` (chat, short explanations) and
+  `gemini-3.8-flash` (failed deployments). On the free tier calls cost nothing, only the per-user limits apply
+  (Google's own free limits too: when they are reached Gemini answers 429 and DeployHub gives built-in answers), and
+  Google may use what it receives to improve its products, so **student ID photos are not sent**: students verify
+  with a college email. If you add billing to the Google project, set `deployhub.assistant.gemini.free-tier=false`
+  (photo check on, cost counted against `daily-budget-inr`). For testing only, `deployhub.assistant.gemini.id-cards-on-free-tier=true`
+  (e.g. in your local `.env`) sends photos on the free tier too; use your own or a sample card.
+- **Claude:** `provider=claude` and `ANTHROPIC_API_KEY` (console.anthropic.com; a Claude subscription can't be used).
+  Models `claude-haiku-5-5` / `claude-opus-5-5`; the Rs 20/day cap applies.
+- Without a key the assistant gives built-in answers; everything else works.
+- Secrets (env var values, tokens, `NAME=secret` lines) are masked before anything goes to the AI; passwords never do.
+  Chats aren't stored. A student ID photo (paid tiers only) is checked once and never stored.
+- `/signup` is the assistant; the plain form is at `/signup/form`. Students: Settings > Student discount.
+- Details, risks and costs: docs/ai-assistant.pdf and docs/adr/0015-ai-assistant.md.
+
+### Import and export a project's database
+On the project's **Database** card, under *Your data*:
+- **Import data:** choose a `.sql` export of a database on your computer (`mysqldump -u root -p mydb > mydb.sql`, or
+  Export in MySQL Workbench / phpMyAdmin), up to 50 MB. DeployHub first leaves out the lines that only work on the
+  computer the file came from (`CREATE DATABASE` / `USE`, `DEFINER=...`, server settings), then runs it as the
+  project's own database user, so the file can't touch any other database and its views/triggers keep working.
+  A database that already has tables is only overwritten with **Delete the current data first** ticked.
+  MySQL's own error is shown if the file doesn't run.
+- **Export data:** downloads the whole database as a `.sql` file (`p12_shop-2026-10-28.sql`): a backup, or to
+  move it elsewhere.
+
+One import or export per project at a time; both are recorded in the audit log. See ADR 0014.
+
 ### Deploying an app that has a frontend, a backend and a database
 1. **Database:** on the backend project's page, click **Add MySQL database**. DeployHub creates it on its shared
    MySQL server and sets `DB_HOST`, `DB_PORT`, `DB_NAME`, `DB_USER`, `DB_PASSWORD` and `DATABASE_URL`. The password
@@ -336,8 +399,9 @@ that folder as its context. Empty = the repository's main folder (as before).
 
 ### Real builds: what to know
 - **Docker Desktop must be running.** If it isn't, deployments retry and then fail with "Docker is not running".
-- **Public repositories only.** git runs with every credential source switched off (no keychain, no IDE askpass),
-  so a private repository fails with "Repository not found or not public" instead of using your GitHub login.
+- **Private repositories need the project's own access token.** git runs with every credential source switched off
+  (no keychain, no IDE askpass), so it never uses your GitHub login; a private repository without a token fails with
+  "Repository not found or not public" (see Private repositories).
 - **Your app must listen on `0.0.0.0` and the port in `$PORT`.** Set the project's port if it isn't the type's
   default (Java 8080, Node/static 3000, Python 8000, Dockerfile 8080). The health check path must answer below HTTP 500.
 - **Where it runs:** each LIVE deployment gets its own port between 20000 and 20999 on `127.0.0.1`; the project page

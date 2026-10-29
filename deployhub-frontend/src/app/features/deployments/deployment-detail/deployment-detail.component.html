@@ -46,6 +46,9 @@
           <strong>{{ d.status === 'CANCELLED' ? 'Cancelled:' : 'Failed:' }}</strong>&nbsp;{{ d.failureReason }}
         </p-message>
       }
+      @if (d.status === 'FAILED') {
+        <app-assistant-hint topic="DEPLOYMENT_FAILED" [deploymentId]="d.id" />
+      }
 
       <ol class="pipeline" aria-label="Deployment progress">
         @for (step of steps(); track step.label) {

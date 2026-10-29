@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { ConfirmationService, MessageService } from 'primeng/api';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 
 import { ProjectDatabase } from '../../../core/models/api.models';
 import { ProjectApiService } from '../../../core/services/api/project-api.service';
@@ -23,7 +23,11 @@ describe('ProjectDatabaseComponent', () => {
   async function render(api: Record<string, unknown>) {
     await TestBed.configureTestingModule({
       imports: [ProjectDatabaseComponent],
-      providers: [MessageService, ConfirmationService, { provide: ProjectApiService, useValue: api }],
+      providers: [
+        MessageService,
+        ConfirmationService,
+        { provide: ProjectApiService, useValue: { databaseExportUrl: () => '/api/projects/4/database/export', ...api } },
+      ],
     }).compileComponents();
     const fixture = TestBed.createComponent(ProjectDatabaseComponent);
     fixture.componentRef.setInput('projectId', 4);
@@ -62,5 +66,52 @@ describe('ProjectDatabaseComponent', () => {
     expect(text).toContain('p4_shop');
     expect(text).not.toContain('shown only now');
     expect(text).toContain('Remove database');
+  });
+
+  describe('your data (import / export)', () => {
+    const sql = new File(['CREATE TABLE a (id INT);'], 'mydb.sql', { type: 'application/sql' });
+
+    function choose(fixture: Awaited<ReturnType<typeof render>>, file: File) {
+      (fixture.componentInstance as unknown as { pick(f: unknown): void }).pick([file]);
+      fixture.detectChanges();
+    }
+
+    it('imports the chosen file, with "delete the current data first" when ticked, and shows the result', async () => {
+      const importDatabase = vi.fn(() => of({ tablesBefore: 0, tablesAfter: 3, message: 'Imported: the database now has 3 tables.' }));
+      const fixture = await render({ getDatabase: () => of(DB), importDatabase, databaseExportUrl: () => '/api/projects/4/database/export' });
+      const el: HTMLElement = fixture.nativeElement;
+      expect(el.textContent).toContain('mysqldump -u root -p mydb');
+      choose(fixture, sql);
+      el.querySelector<HTMLInputElement>('.check input')!.click();
+      fixture.detectChanges();
+      expect(el.textContent).toContain('Everything now in the database is deleted');
+
+      [...el.querySelectorAll('button')].find((b) => b.textContent?.includes('Import data'))!.click();
+      fixture.detectChanges();
+
+      expect(importDatabase).toHaveBeenCalledWith(4, sql, true);
+      expect(el.textContent).toContain('now has 3 tables');
+    });
+
+    it("shows MySQL's explanation when the file can't be imported", async () => {
+      const importDatabase = vi.fn(() => throwError(() => ({
+        status: 400, title: 'Validation failed', detail: 'x',
+        fieldErrors: { file: 'MySQL couldn\'t run the file: ERROR 1064 at line 1: You have an error in your SQL syntax' },
+      })));
+      const fixture = await render({ getDatabase: () => of(DB), importDatabase, databaseExportUrl: () => '/x' });
+      choose(fixture, sql);
+
+      [...(fixture.nativeElement as HTMLElement).querySelectorAll('button')].find((b) => b.textContent?.includes('Import data'))!.click();
+      fixture.detectChanges();
+
+      expect(fixture.nativeElement.textContent).toContain('You have an error in your SQL syntax');
+    });
+
+    it('offers the export as a download link', async () => {
+      const fixture = await render({ getDatabase: () => of(DB), databaseExportUrl: (id: number) => `/api/projects/${id}/database/export` });
+      const link = (fixture.nativeElement as HTMLElement).querySelector<HTMLAnchorElement>('a.export')!;
+      expect(link.getAttribute('href')).toBe('/api/projects/4/database/export');
+      expect(link.hasAttribute('download')).toBe(true);
+    });
   });
 });

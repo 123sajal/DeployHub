@@ -49,7 +49,7 @@ export class RazorpayCheckoutService {
         name: 'DeployHub',
         description,
         prefill: { name: order.name, email: order.email },
-        theme: { color: '#6366f1' },
+        theme: { color: '#cc4a0a' },
         handler: (r: RazorpayResponse) => resolve({ paymentId: r.razorpay_payment_id, signature: r.razorpay_signature }),
         modal: { ondismiss: () => reject(new CheckoutDismissed()) },
       });

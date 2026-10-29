@@ -63,4 +63,36 @@ public class MailService implements IMailService {
             log.error("Could not email the password reset code to {}: {}", email, e.getMessage());
         }
     }
+
+    @Override
+    public void sendEmailCode(String email, String purpose, String code, Duration validFor) {
+        JavaMailSender sender = mailSender.getIfAvailable();
+        if (username.isBlank() || sender == null) {
+            log.warn("Email is not set up (MAIL_USERNAME is empty), so no email was sent. "
+                    + "Code for {} ({}): {} (development only)", email, purpose, code);
+            return;
+        }
+        SimpleMailMessage message = new SimpleMailMessage();
+        message.setFrom(from);
+        message.setTo(email);
+        message.setSubject("Your DeployHub code: " + code);
+        message.setText("""
+                Hi,
+
+                Your DeployHub code to %s is:
+
+                    %s
+
+                It works once and expires in %d minutes.
+                If you didn't ask for this, ignore this email.
+
+                - DeployHub
+                """.formatted(purpose, code, validFor.toMinutes()));
+        try {
+            sender.send(message);
+            log.info("Email code sent to {}", email);
+        } catch (MailException e) {
+            log.error("Could not email the code to {}: {}", email, e.getMessage());
+        }
+    }
 }

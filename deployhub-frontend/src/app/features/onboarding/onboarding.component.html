@@ -1,0 +1,156 @@
+<main class="onboarding dh-3d">
+  <app-auth-backdrop />
+  <section class="chat" aria-labelledby="onboarding-title">
+    <header>
+      <a class="dh-auth-brand" routerLink="/">
+        <app-logo />
+      </a>
+      <h1 id="onboarding-title">Create your account</h1>
+      <p class="sub">
+        With the DeployHub assistant. Prefer a normal form? <a routerLink="/signup/form">Use the simple form</a>
+        · Have an account? <a routerLink="/login">Log in</a>
+      </p>
+    </header>
+
+    <div class="messages" #list aria-live="polite">
+      @for (m of messages(); track $index) {
+        <div class="msg" [class.user]="m.from === 'user'">
+          @if (m.from === 'bot') {
+            <app-assistant-avatar />
+          }
+          <div class="bubble">
+            @if (m.notice) {
+              <small class="notice">{{ m.notice }}</small>
+            }
+            <p>{{ m.text }}</p>
+          </div>
+        </div>
+      }
+      @if (busy() || step() === 'creating') {
+        <div class="msg">
+          <app-assistant-avatar />
+          <div class="bubble typing" aria-label="The assistant is typing"><span></span><span></span><span></span></div>
+        </div>
+      }
+    </div>
+
+    <div class="input">
+      @switch (step()) {
+        @case ('confirmEmail') {
+          <div class="choices">
+            <p-button [label]="'Yes, use ' + suggestion()" (onClick)="chooseEmail(true)" [disabled]="busy()" />
+            <p-button [label]="'No, keep ' + email()" severity="secondary" [outlined]="true"
+                      (onClick)="chooseEmail(false)" [disabled]="busy()" />
+          </div>
+        }
+        @case ('occupation') {
+          <div class="choices">
+            <p-button label="I'm a student" icon="pi pi-book" (onClick)="chooseOccupation('STUDENT')" />
+            <p-button label="I'm a working professional" icon="pi pi-briefcase" severity="secondary" [outlined]="true"
+                      (onClick)="chooseOccupation('PROFESSIONAL')" />
+          </div>
+        }
+        @case ('password') {
+          <form class="password" (ngSubmit)="createAccount()" novalidate>
+            <label for="ob-password" class="sr-only">Password</label>
+            <input id="ob-password" name="password" type="password" [(ngModel)]="password" autocomplete="new-password"
+                   placeholder="Password (10+ characters)" />
+            <label for="ob-confirm" class="sr-only">Confirm password</label>
+            <input id="ob-confirm" name="confirmPassword" type="password" [(ngModel)]="confirmPassword"
+                   autocomplete="new-password" placeholder="Type it again" />
+            <p-button type="submit" label="Create account" icon="pi pi-check" />
+            @if (passwordError(); as message) {
+              <small class="error" role="alert">{{ message }}</small>
+            }
+          </form>
+        }
+        @case ('creating') {
+          <p class="faint">Creating your account...</p>
+        }
+        @case ('student') {
+          <div class="choices">
+            <label class="upload" [class.disabled]="busy()">
+              <i class="pi pi-id-card" aria-hidden="true"></i> Upload student ID photo
+              <input type="file" accept="image/jpeg,image/png" (change)="uploadCard($event)" [disabled]="busy()" />
+            </label>
+            <p-button label="Later" severity="secondary" [outlined]="true" (onClick)="skipStudentCheck()"
+                      [disabled]="busy()" />
+          </div>
+          <small class="faint">JPG or PNG, up to 5 MB. By uploading you agree that DeployHub's AI checks the card once;
+            the photo is deleted right after.</small>
+        }
+        @case ('done') {
+          <div class="choices">
+            <p-button label="Deploy my first project" icon="pi pi-cloud-upload" (onClick)="goTo('/app/projects/new')" />
+            <p-button label="Go to dashboard" severity="secondary" [outlined]="true" (onClick)="goTo('return')" />
+          </div>
+        }
+        @default {
+          <form class="text" (ngSubmit)="send()">
+            <label for="ob-answer" class="sr-only">Your answer</label>
+            <input id="ob-answer" name="answer" [(ngModel)]="answer" maxlength="300" autocomplete="off"
+                   [attr.inputmode]="step() === 'code' ? 'numeric' : null"
+                   [attr.type]="step() === 'email' ? 'email' : 'text'"
+                   [placeholder]="step() === 'code' ? '6-digit code' : 'Type your answer, or ask a question?'" />
+            <button type="submit" class="send" [disabled]="busy() || !answer.trim()" aria-label="Send">
+              <i class="pi pi-send" aria-hidden="true"></i>
+            </button>
+          </form>
+          @if (step() === 'code') {
+            <p class="links">
+              <button type="button" class="link" (click)="sendCode()" [disabled]="busy()">Send a new code</button>
+              · <button type="button" class="link" (click)="changeEmail()" [disabled]="busy()">Use another email</button>
+            </p>
+          }
+          @if (emailTaken()) {
+            <p class="links"><a routerLink="/login">Log in</a> · <a routerLink="/forgot-password">Forgot password</a></p>
+          }
+        }
+      }
+    </div>
+  </section>
+
+  <aside class="details" aria-label="Your details">
+    <h2>Your details</h2>
+    <ul>
+      <li [class.done]="name()">
+        <i class="pi" [class.pi-check-circle]="name()" [class.pi-circle]="!name()" aria-hidden="true"></i>
+        <div><small>Name</small><span>{{ name() || 'Waiting...' }}</span></div>
+      </li>
+      <li [class.done]="emailVerified()">
+        <i class="pi" [class.pi-check-circle]="emailVerified()" [class.pi-circle]="!emailVerified()" aria-hidden="true"></i>
+        <div>
+          <small>Email</small>
+          <span>{{ email() || 'Waiting...' }}</span>
+          @if (email() && !emailVerified()) {
+            <em>not confirmed yet</em>
+          }
+        </div>
+      </li>
+      <li [class.done]="occupation()">
+        <i class="pi" [class.pi-check-circle]="occupation()" [class.pi-circle]="!occupation()" aria-hidden="true"></i>
+        <div>
+          <small>I am a</small>
+          <span>{{ occupation() === 'STUDENT' ? 'Student' : occupation() === 'PROFESSIONAL' ? 'Working professional' : 'Waiting...' }}</span>
+        </div>
+      </li>
+      <li [class.done]="passwordSet()">
+        <i class="pi" [class.pi-check-circle]="passwordSet()" [class.pi-circle]="!passwordSet()" aria-hidden="true"></i>
+        <div><small>Password</small><span>{{ passwordSet() ? 'Set' : 'Waiting...' }}</span></div>
+      </li>
+      @if (occupation() === 'STUDENT') {
+        <li [class.done]="student()">
+          <i class="pi" [class.pi-check-circle]="student()" [class.pi-circle]="!student()" aria-hidden="true"></i>
+          <div>
+            <small>Student discount (optional)</small>
+            <span>{{ student() ? 'Verified until ' + student()!.validUntil : 'Not checked yet' }}</span>
+          </div>
+        </li>
+      }
+    </ul>
+    <p class="privacy">
+      <i class="pi pi-lock" aria-hidden="true"></i>
+      DeployHub never asks for Aadhaar, PAN or bank details. Your password is never shown to the assistant.
+    </p>
+  </aside>
+</main>

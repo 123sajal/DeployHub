@@ -19,10 +19,13 @@ function passwordsMatch(group: AbstractControl): ValidationErrors | null {
 /**
  * Forgot password in two steps: 1. enter the email and get a 6-digit code by email,
  * 2. enter the code and a new password. Afterwards the user logs in with the new password.
- */
+ */import { LogoComponent } from '../../../core/components/shared/logo.component';
+
+import { AuthBackdropComponent } from '../../../core/components/shared/auth-backdrop.component';
+
 @Component({
   selector: 'app-forgot-password',
-  imports: [ReactiveFormsModule, RouterLink, ButtonModule, InputTextModule, MessageModule],
+  imports: [ReactiveFormsModule, RouterLink, ButtonModule, InputTextModule, MessageModule, LogoComponent, AuthBackdropComponent],
   templateUrl: './forgot-password.component.html',
 })
 export class ForgotPasswordComponent {

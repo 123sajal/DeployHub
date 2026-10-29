@@ -16,4 +16,7 @@ public interface IProjectService {
     ProjectResponseDTO update(Long id, ProjectRequestDTO request);
 
     void delete(Long id);
+
+    /** Forgets the project's access token: its repository is read as public again. */
+    ProjectResponseDTO removeRepositoryToken(Long id);
 }

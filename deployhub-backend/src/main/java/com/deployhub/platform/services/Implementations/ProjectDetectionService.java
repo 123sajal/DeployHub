@@ -1,9 +1,11 @@
 package com.deployhub.platform.services.Implementations;
 
-import com.deployhub.platform.exceptions.TooManyRequestsException;
 import com.deployhub.platform.models.DTO.DetectRequestDTO;
 import com.deployhub.platform.models.DTO.DetectResponseDTO;
 import com.deployhub.platform.models.enums.ApplicationType;
+import com.deployhub.platform.repositories.ProjectRepository;
+import com.deployhub.platform.security.RepositoryCheckThrottle;
+import com.deployhub.platform.security.SecretCipher;
 import com.deployhub.platform.services.Interface.ICurrentUserService;
 import com.deployhub.platform.services.Interface.IProjectDetectionService;
 import com.deployhub.platform.services.Interface.IRepositoryFiles;
@@ -11,12 +13,7 @@ import org.springframework.stereotype.Service;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.json.JsonMapper;
 
-import java.time.Clock;
-import java.time.Duration;
-import java.time.Instant;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
-import java.util.Deque;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -24,7 +21,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -49,25 +45,53 @@ public class ProjectDetectionService implements IProjectDetectionService {
     private static final String SERVE_FIRST_BUILD_FOLDER =
             "npx --yes serve -s \"$(for d in dist/*/browser dist build out; do [ -d \"$d\" ] && echo \"$d\" && break; done)\" -l $PORT";
     private static final Pattern DJANGO_SETTINGS = Pattern.compile("DJANGO_SETTINGS_MODULE['\"]?\\s*,\\s*['\"]([\\w.]+)\\.settings['\"]");
-    private static final int MAX_PER_MINUTE = 20;
 
     private final IRepositoryFiles files;
     private final ICurrentUserService currentUserService;
-    private final Clock clock;
-    private final Map<Long, Deque<Instant>> recentRequests = new ConcurrentHashMap<>();
+    private final ProjectRepository projects;
+    private final SecretCipher cipher;
+    private final RepositoryCheckThrottle throttle;
 
-    public ProjectDetectionService(IRepositoryFiles files, ICurrentUserService currentUserService, Clock clock) {
+    public ProjectDetectionService(IRepositoryFiles files, ICurrentUserService currentUserService,
+                                   ProjectRepository projects, SecretCipher cipher, RepositoryCheckThrottle throttle) {
         this.files = files;
         this.currentUserService = currentUserService;
-        this.clock = clock;
+        this.projects = projects;
+        this.cipher = cipher;
+        this.throttle = throttle;
+    }
+
+    private IRepositoryFiles.Snapshot openFor(DetectRequestDTO request) {
+        return files.open(request.repositoryUrl(), request.branch(), false, token(request));
+    }
+
+    /** The typed token, else (when editing) the project's saved one; null for a public repository. */
+    private String token(DetectRequestDTO request) {
+        if (request.repositoryToken() != null) {
+            return request.repositoryToken();
+        }
+        if (request.projectId() == null) {
+            return null;
+        }
+        return projects.findByIdAndOwnerId(request.projectId(), currentUserService.currentUserId())
+                .filter(p -> p.getRepoTokenEncrypted() != null && p.getRepositoryUrl().equals(request.repositoryUrl()))
+                .map(p -> {
+                    try {
+                        return cipher.decrypt(p.getRepoTokenEncrypted());
+                    } catch (IllegalStateException e) {
+                        throw new IRepositoryFiles.RepositoryNotReadable("The saved access token can't be read (was "
+                                + "DEPLOYHUB_SECRETS_KEY changed?). Paste it again on the project's Edit page.");
+                    }
+                })
+                .orElse(null);
     }
 
     @Override
     public DetectResponseDTO detect(DetectRequestDTO request) {
-        throttle(currentUserService.currentUserId());
+        throttle.check(currentUserService.currentUserId());
         String folder = folder(request.rootDirectory());
         List<String> notes = new ArrayList<>();
-        try (IRepositoryFiles.Snapshot snapshot = files.open(request.repositoryUrl(), request.branch())) {
+        try (IRepositoryFiles.Snapshot snapshot = openFor(request)) {
             return detect(new Repo(snapshot, folder), notes);
         } catch (IRepositoryFiles.RepositoryNotReadable e) {
             notes.add(e.getMessage());
@@ -137,16 +161,18 @@ public class ProjectDetectionService implements IProjectDetectionService {
         Map<String, String> scripts = new HashMap<>();
         pkg.path("scripts").properties().forEach(e -> scripts.put(e.getKey(), e.getValue().asString("")));
 
+        // With a lock file: install exactly what it lists, but if it doesn't match package.json (e.g. it was made by
+        // another npm/yarn/pnpm version than the build image's), fall back to a normal install instead of failing.
         String install;
         String run;
         if (repo.exists("pnpm-lock.yaml")) {
-            install = "corepack enable && pnpm install --frozen-lockfile";
+            install = "corepack enable && (pnpm install --frozen-lockfile || pnpm install)";
             run = "pnpm ";
         } else if (repo.exists("yarn.lock")) {
-            install = "yarn install --frozen-lockfile";
+            install = "(yarn install --frozen-lockfile || yarn install)";
             run = "yarn ";
         } else if (repo.exists("package-lock.json")) {
-            install = "npm ci";
+            install = "(npm ci || npm install)";
             run = "npm run ";
         } else {
             install = "npm install";
@@ -327,20 +353,6 @@ public class ProjectDetectionService implements IProjectDetectionService {
             folder = folder.substring(2);
         }
         return folder.replaceAll("/+$", "");
-    }
-
-    private void throttle(Long userId) {
-        Instant now = clock.instant();
-        Deque<Instant> times = recentRequests.computeIfAbsent(userId, id -> new ArrayDeque<>());
-        synchronized (times) {
-            while (!times.isEmpty() && times.peekFirst().isBefore(now.minus(Duration.ofMinutes(1)))) {
-                times.pollFirst();
-            }
-            if (times.size() >= MAX_PER_MINUTE) {
-                throw new TooManyRequestsException("Too many repository checks. Wait a minute.", Duration.ofMinutes(1));
-            }
-            times.addLast(now);
-        }
     }
 
     /** One folder of the fetched branch; existence comes from the file list, file contents are read once each. */

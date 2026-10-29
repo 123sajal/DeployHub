@@ -20,7 +20,9 @@ describe('ProjectApiService', () => {
     service.detect('https://github.com/acme/ems', 'main', 'backend').subscribe();
     const req = http.expectOne('/api/projects/detect');
     expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ repositoryUrl: 'https://github.com/acme/ems', branch: 'main', rootDirectory: 'backend' });
+    expect(req.request.body).toEqual({
+      repositoryUrl: 'https://github.com/acme/ems', branch: 'main', rootDirectory: 'backend', repositoryToken: null, projectId: null,
+    });
     req.flush({ appType: null, buildCommand: null, startCommand: null, appFolders: [], notes: [] });
   });
 });

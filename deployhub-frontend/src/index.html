@@ -1,12 +1,15 @@
 <!doctype html>
-<html lang="en" class="app-dark">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <title>DeployHub</title>
   <base href="/">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="description" content="DeployHub - deploy your code, ship with confidence.">
-  <link rel="icon" type="image/x-icon" href="favicon.ico">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="icon" type="image/x-icon" href="favicon.ico" sizes="any">
+  <!-- Apply the saved theme before the app starts, so dark-mode users don't see a white flash (see ThemeService). -->
+  <script>try { if (localStorage.getItem('dh-theme') === 'dark') document.documentElement.classList.add('app-dark'); } catch (e) {}</script>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">

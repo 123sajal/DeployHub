@@ -1,13 +1,17 @@
 package com.deployhub.platform.controllers;
 
+import com.deployhub.platform.exceptions.FieldValidationException;
 import com.deployhub.platform.models.DTO.DetectRequestDTO;
 import com.deployhub.platform.models.DTO.DetectResponseDTO;
 import com.deployhub.platform.models.DTO.PageResponseDTO;
 import com.deployhub.platform.models.DTO.ProjectRequestDTO;
 import com.deployhub.platform.models.DTO.ProjectResponseDTO;
 import com.deployhub.platform.models.enums.ApplicationType;
+import com.deployhub.platform.security.RepositoryCheckThrottle;
+import com.deployhub.platform.services.Interface.ICurrentUserService;
 import com.deployhub.platform.services.Interface.IProjectDetectionService;
 import com.deployhub.platform.services.Interface.IProjectService;
+import com.deployhub.platform.services.Interface.IRepositoryFiles;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
@@ -32,6 +36,9 @@ public class ProjectController {
 
     private final IProjectService projectService;
     private final IProjectDetectionService detectionService;
+    private final IRepositoryFiles repositoryFiles;
+    private final ICurrentUserService currentUserService;
+    private final RepositoryCheckThrottle repositoryChecks;
 
     @GetMapping
     public PageResponseDTO<ProjectResponseDTO> list(@RequestParam(required = false) String search,
@@ -54,13 +61,38 @@ public class ProjectController {
 
     @PostMapping
     public ResponseEntity<ProjectResponseDTO> create(@Valid @RequestBody ProjectRequestDTO request) {
+        checkToken(request);
         ProjectResponseDTO created = projectService.create(request);
         return ResponseEntity.created(URI.create("/api/projects/" + created.id())).body(created);
     }
 
     @PutMapping("/{id}")
     public ProjectResponseDTO update(@PathVariable Long id, @Valid @RequestBody ProjectRequestDTO request) {
+        projectService.get(id); // 404 for someone else's project, before anything is sent to a Git host
+        checkToken(request);
         return projectService.update(id, request);
+    }
+
+    /** Forgets the project's access token (for a private repository). */
+    @DeleteMapping("/{id}/repository-token")
+    public ProjectResponseDTO removeRepositoryToken(@PathVariable Long id) {
+        return projectService.removeRepositoryToken(id);
+    }
+
+    /**
+     * A new access token is tried against the repository before it is saved (outside any database transaction: it
+     * takes a network round trip), so a wrong or too-narrow token is reported on the form, not at the next deploy.
+     */
+    private void checkToken(ProjectRequestDTO request) {
+        if (request.repositoryToken() == null) {
+            return;
+        }
+        repositoryChecks.check(currentUserService.currentUserId()); // no unlimited token testing
+        try {
+            repositoryFiles.checkAccess(request.repositoryUrl(), request.branch(), request.repositoryToken());
+        } catch (IRepositoryFiles.RepositoryNotReadable e) {
+            throw new FieldValidationException("repositoryToken", e.getMessage());
+        }
     }
 
     @DeleteMapping("/{id}")

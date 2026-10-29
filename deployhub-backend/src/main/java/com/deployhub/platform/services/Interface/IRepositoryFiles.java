@@ -12,14 +12,23 @@ public interface IRepositoryFiles {
      * @throws RepositoryNotReadable when the repository or branch doesn't exist or isn't public
      */
     default Snapshot open(String repositoryUrl, String branch) {
-        return open(repositoryUrl, branch, false);
+        return open(repositoryUrl, branch, false, null);
     }
 
     /**
      * @param withSmallFiles also download every file up to 256 KB in the same fetch, so reading many files (e.g. to
      *                       scan the source code) needs no further requests
+     * @param token          access token for a private repository; null for public ones
      */
-    Snapshot open(String repositoryUrl, String branch, boolean withSmallFiles);
+    Snapshot open(String repositoryUrl, String branch, boolean withSmallFiles, String token);
+
+    /**
+     * Checks that the repository and branch can be read (with the token, for a private repository) without
+     * downloading anything.
+     *
+     * @throws RepositoryNotReadable with a plain explanation when they can't
+     */
+    void checkAccess(String repositoryUrl, String branch, String token);
 
     interface Snapshot extends AutoCloseable {
 

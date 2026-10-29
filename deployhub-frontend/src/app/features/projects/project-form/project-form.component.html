@@ -27,9 +27,58 @@
         <input pInputText id="repositoryUrl" formControlName="repositoryUrl" (blur)="trim('repositoryUrl'); autoDetect()" type="url"
                placeholder="https://github.com/owner/repo" autocomplete="off"
                [attr.aria-invalid]="showError('repositoryUrl')" aria-describedby="repo-hint repo-error" />
-        <small id="repo-hint" class="dh-hint">Public https URL on github.com, gitlab.com or bitbucket.org.</small>
+        <small id="repo-hint" class="dh-hint">https URL on github.com, gitlab.com or bitbucket.org.</small>
         @if (showError('repositoryUrl')) {
           <small id="repo-error" class="dh-error" role="alert">{{ errorText('repositoryUrl') }}</small>
+        }
+      </div>
+
+      <div class="private">
+        <label class="check">
+          <input type="checkbox" formControlName="isPrivate" />
+          This repository is private
+        </label>
+        @if (form.controls.isPrivate.value) {
+          <div class="dh-field token">
+            <label for="repositoryToken">Access token</label>
+            @if (savedToken(); as when) {
+              <p class="saved">
+                <i class="pi pi-lock" aria-hidden="true"></i> A token is saved (encrypted). Leave this empty to keep it,
+                or paste a new one to replace it.
+                <p-button label="Remove token" icon="pi pi-trash" severity="danger" size="small" [text]="true"
+                          [loading]="removingToken()" (onClick)="removeToken()" />
+              </p>
+            }
+            <input pInputText id="repositoryToken" formControlName="repositoryToken" type="password"
+                   class="mono" autocomplete="off" placeholder="github_pat_… / glpat-… / ATCTT…"
+                   (blur)="trim('repositoryToken'); autoDetect()" [attr.aria-invalid]="showError('repositoryToken')"
+                   aria-describedby="token-hint token-error" />
+            @if (showError('repositoryToken')) {
+              <small id="token-error" class="dh-error" role="alert">{{ errorText('repositoryToken') }}</small>
+            }
+            @if (urlChangeDropsToken()) {
+              <small class="dh-error" role="alert">
+                You changed the repository URL: the saved token belongs to the old repository and will be removed.
+                Paste a token for the new repository.
+              </small>
+            }
+            <div id="token-hint" class="dh-hint how">
+              DeployHub checks the token, keeps it encrypted, never shows it again and uses it only to read this repository.
+              Read-only access is enough. How to make one:
+              <ul>
+                <li><strong>GitHub</strong>:
+                  <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener noreferrer">new fine-grained token</a>
+                  → Repository access: <em>Only select repositories</em> (pick this one) → Permissions: <em>Contents: Read-only</em> → Generate.</li>
+                <li><strong>GitLab</strong>:
+                  <a href="https://gitlab.com/-/user_settings/personal_access_tokens" target="_blank" rel="noopener noreferrer">personal access token</a>
+                  with the scope <em>read_repository</em>.</li>
+                <li><strong>Bitbucket</strong>: the repository's <em>Repository settings → Access tokens</em> → Create, with
+                  <em>Repositories: Read</em>.</li>
+              </ul>
+            </div>
+          </div>
+        } @else if (looksPrivate()) {
+          <small class="dh-hint">Can't read this repository: if it's private, tick the box and add an access token.</small>
         }
       </div>
 

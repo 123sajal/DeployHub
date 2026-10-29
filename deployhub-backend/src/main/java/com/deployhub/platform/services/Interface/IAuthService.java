@@ -2,6 +2,7 @@ package com.deployhub.platform.services.Interface;
 
 import com.deployhub.platform.models.DTO.CurrentUserResponseDTO;
 import com.deployhub.platform.models.DTO.LoginRequestDTO;
+import com.deployhub.platform.models.DTO.ProfileUpdateRequestDTO;
 import com.deployhub.platform.models.DTO.RegisterRequestDTO;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -16,4 +17,7 @@ public interface IAuthService {
                                  HttpServletResponse httpResponse);
 
     CurrentUserResponseDTO currentUser();
+
+    /** Changes what the signed-in user told the assistant (student or working professional). */
+    CurrentUserResponseDTO updateProfile(ProfileUpdateRequestDTO request);
 }

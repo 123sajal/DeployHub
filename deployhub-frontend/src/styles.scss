@@ -1,6 +1,49 @@
 // Design tokens. PrimeNG components get their colors from the Aura preset (core/utils/theme.ts);
 // these variables cover DeployHub's own layout and cards.
+// Light (white and warm orange) is the default; the dark theme applies when <html> has the class "app-dark"
+// (ThemeService, the sun/moon button in the top bar; remembered per device).
+// Orange shades were picked by contrast: --dh-primary-strong carries white button text (4.6:1), --dh-primary is for
+// links and small text (5.2:1 on white), --dh-accent (the bright brand orange) only for icons and decoration.
 :root {
+  --dh-bg: #fdfaf6;
+  --dh-bg-elevated: #fff4ea;
+  --dh-surface: #ffffff;
+  --dh-surface-hover: #fff3e8;
+  --dh-border: #ede7e0;
+  --dh-border-strong: #ddd4ca;
+  --dh-text: #1c1917;
+  --dh-text-muted: #57534e;
+  --dh-text-faint: #6b625a;
+  --dh-primary: #c2410c;
+  --dh-primary-strong: #cc4a0a;
+  --dh-primary-hover: #b93d0a;
+  --dh-on-primary: #ffffff;
+  --dh-accent: #f97316;
+  --dh-success: #047857;
+  --dh-warning: #b45309;
+  --dh-danger: #b91c1c;
+  --dh-info: #1d4ed8;
+  --dh-brand-gradient: linear-gradient(135deg, #f97316, #cc4a0a);
+  --dh-glow: rgba(249, 115, 22, 0.14);
+  --dh-shadow: 0 24px 60px -28px rgba(120, 53, 15, 0.28);
+  --dh-topbar: rgba(253, 250, 246, 0.88);
+  --dh-scrim: rgba(28, 25, 23, 0.4);
+  // Log windows stay dark in both themes, like a terminal.
+  --dh-term-bg: #1c1917;
+  --dh-term-text: #f5f5f4;
+  --dh-term-faint: #a8a29e;
+  --dh-term-info: #93c5fd;
+  --dh-term-success: #6ee7b7;
+  --dh-term-warning: #fcd34d;
+  --dh-term-danger: #fca5a5;
+  --dh-radius: 10px;
+  --dh-radius-lg: 14px;
+  --dh-font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --dh-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  color-scheme: light;
+}
+
+:root.app-dark {
   --dh-bg: #0b0d12;
   --dh-bg-elevated: #11141b;
   --dh-surface: #161a23;
@@ -9,17 +52,19 @@
   --dh-border-strong: #2e3448;
   --dh-text: #e6e8ee;
   --dh-text-muted: #8b92a7;
-  --dh-text-faint: #5d6478;
-  --dh-primary: #818cf8;
-  --dh-primary-strong: #6366f1;
+  --dh-text-faint: #7d849a;
+  --dh-primary: #fb923c;
+  --dh-primary-strong: #cc4a0a;
+  --dh-primary-hover: #e05a10;
   --dh-success: #34d399;
   --dh-warning: #fbbf24;
   --dh-danger: #f87171;
   --dh-info: #60a5fa;
-  --dh-radius: 10px;
-  --dh-radius-lg: 14px;
-  --dh-font: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --dh-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+  --dh-glow: rgba(249, 115, 22, 0.18);
+  --dh-shadow: 0 30px 80px -24px rgba(0, 0, 0, 0.7);
+  --dh-topbar: rgba(11, 13, 18, 0.85);
+  --dh-scrim: rgba(0, 0, 0, 0.5);
+  --dh-term-bg: #07080c;
   color-scheme: dark;
 }
 
@@ -189,7 +234,23 @@ code,
   display: grid;
   place-items: center;
   padding: 2rem 1rem;
-  background: radial-gradient(600px 300px at 50% -80px, rgba(99, 102, 241, 0.25), transparent 70%), var(--dh-bg);
+  background: radial-gradient(600px 300px at 50% -80px, var(--dh-glow), transparent 70%), var(--dh-bg);
+}
+
+// Pages with the 3D background (app-auth-backdrop sits at z-index -1 inside this isolated root).
+.dh-3d {
+  isolation: isolate;
+}
+
+// Login, sign-up and forgot password: the card floats above the scene, slightly see-through.
+.dh-auth-3d {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  .dh-auth-card {
+    background: color-mix(in srgb, var(--dh-surface) 86%, transparent);
+    backdrop-filter: blur(10px);
+  }
 }
 
 .dh-auth-card {
@@ -202,7 +263,7 @@ code,
   background: var(--dh-surface);
   border: 1px solid var(--dh-border);
   border-radius: var(--dh-radius-lg);
-  box-shadow: 0 30px 80px -30px rgba(99, 102, 241, 0.35);
+  box-shadow: var(--dh-shadow);
 
   h1 {
     font-size: 1.5rem;
@@ -237,16 +298,6 @@ code,
   font-size: 1.05rem;
   text-decoration: none;
   margin-bottom: 0.5rem;
-  .logo {
-    display: grid;
-    place-items: center;
-    width: 30px;
-    height: 30px;
-    border-radius: 8px;
-    background: linear-gradient(135deg, var(--dh-primary-strong), #a855f7);
-    color: #fff;
-    font-size: 0.85rem;
-  }
 }
 
 .dh-password {

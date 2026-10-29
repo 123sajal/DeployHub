@@ -11,7 +11,8 @@ public final class ProjectMapper {
 
     public static ProjectResponseDTO toResponse(ProjectMaster project) {
         return new ProjectResponseDTO(project.getId(), project.getName(), project.getRepositoryUrl(),
-                project.getBranch(), project.getAppType(), project.getRootDirectory(), project.getBuildCommand(), project.getStartCommand(),
+                project.getBranch(), project.getAppType(), project.getRootDirectory(), project.getRepoTokenEncrypted() != null,
+                project.getRepoTokenUpdatedAt(), project.getBuildCommand(), project.getStartCommand(),
                 project.getAppPort(), effectivePort(project), project.getHealthCheckPath(), publicUrl(project),
                 project.isPublicLinkOn(), project.isPublicLinkOn() ? project.getPublicLinkUrl() : null,
                 project.isFree(), project.getCreatedAt(), project.getUpdatedAt());

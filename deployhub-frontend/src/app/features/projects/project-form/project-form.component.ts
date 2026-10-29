@@ -2,6 +2,7 @@ import { Component, DestroyRef, OnInit, computed, inject, input, signal } from '
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router, RouterLink } from '@angular/router';
+import { switchMap } from 'rxjs';
 import { MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
 import { InputTextModule } from 'primeng/inputtext';
@@ -89,6 +90,8 @@ export class ProjectFormComponent implements OnInit {
     branch: ['main', [Validators.required, trimmedLength(1, 100), trimmedPattern(BRANCH_PATTERN)]],
     appType: this.fb.control<ApplicationType | null>(null, Validators.required),
     rootDirectory: ['', [Validators.maxLength(200), Validators.pattern(APP_FOLDER_PATTERN)]],
+    isPrivate: [false],
+    repositoryToken: ['', [Validators.maxLength(500), Validators.pattern(/^\s*[A-Za-z0-9_.~+/=:-]*\s*$/)]],
     buildCommand: ['', [Validators.maxLength(500), Validators.pattern(SINGLE_LINE)]],
     startCommand: ['', [Validators.required, Validators.maxLength(500), Validators.pattern(SINGLE_LINE)]],
     appPort: this.fb.control<number | null>(null, [Validators.min(1), Validators.max(65535)]),
@@ -103,6 +106,18 @@ export class ProjectFormComponent implements OnInit {
   protected readonly appTypeLabel = appTypeLabel;
   /** True while a loaded project or a detection result is put into the form (that isn't the user picking a type). */
   private fillingForm = false;
+  /** The repository URL the project had when the Edit page opened. */
+  private loadedRepositoryUrl = '';
+
+  /** Edit page: a new repository URL without a new token drops the saved token (it belongs to the old repository). */
+  protected urlChangeDropsToken(): boolean {
+    const { repositoryUrl, repositoryToken } = this.form.controls;
+    return !!this.savedToken() && repositoryUrl.value.trim() !== this.loadedRepositoryUrl && !repositoryToken.value.trim();
+  }
+
+  /** When the saved access token was set (Edit page), or null when there is none. */
+  protected readonly savedToken = signal<string | null>(null);
+  protected readonly removingToken = signal(false);
   /** What the last repository check found; shown under App folder. */
   protected readonly detection = signal<DetectResult | null>(null);
   protected readonly detecting = signal(false);
@@ -149,12 +164,16 @@ export class ProjectFormComponent implements OnInit {
           branch: p.branch,
           appType: p.appType,
           rootDirectory: p.rootDirectory ?? '',
+          isPrivate: p.privateRepository,
+          repositoryToken: '',
           buildCommand: p.buildCommand ?? '',
           startCommand: p.startCommand ?? '',
           appPort: p.appPort,
           healthCheckPath: p.healthCheckPath ?? '',
         });
         this.fillingForm = false;
+        this.savedToken.set(p.privateRepository ? p.repositoryTokenUpdatedAt : null);
+        this.loadedRepositoryUrl = p.repositoryUrl;
         this.loading.set(false);
       },
       error: (err: ApiError) => {
@@ -180,6 +199,7 @@ export class ProjectFormComponent implements OnInit {
   protected errorText(field: keyof typeof this.form.controls): string {
     const errors = this.form.controls[field].errors ?? {};
     if (errors['server']) return errors['server'];
+    if (errors['tokenMissing']) return 'Paste the access token, or untick "This repository is private"';
     if (errors['required']) return 'This field is required';
     if (errors['minlength']) return `Must be at least ${errors['minlength'].requiredLength} characters`;
     if (errors['maxlength']) return `Must be at most ${errors['maxlength'].requiredLength} characters`;
@@ -195,6 +215,8 @@ export class ProjectFormComponent implements OnInit {
           return 'Must start with / (for example /health)';
         case 'rootDirectory':
           return 'Must be a folder inside the repository, e.g. backend or apps/web';
+        case 'repositoryToken':
+          return 'That is not a valid access token (copy it again, without spaces)';
         default:
           return 'Must be a single line';
       }
@@ -209,22 +231,35 @@ export class ProjectFormComponent implements OnInit {
       return;
     }
     const raw = this.form.getRawValue();
+    // "Private" ticked but no token and none saved: the project would be saved as public (review #9).
+    if (raw.isPrivate && !raw.repositoryToken.trim() && !this.savedToken()) {
+      this.form.controls.repositoryToken.setErrors({ tokenMissing: true });
+      this.form.controls.repositoryToken.markAsTouched();
+      return;
+    }
+    // Unticking "private" on the Edit page means: forget the saved token (review #2).
+    const removeSavedToken = this.isEdit() && !!this.savedToken() && !raw.isPrivate;
+    const { isPrivate: _isPrivate, ...fields } = raw;
     const request: ProjectRequest = {
-      ...raw,
+      ...fields,
       appType: raw.appType!,
       name: raw.name.trim(),
       branch: raw.branch.trim(),
       repositoryUrl: raw.repositoryUrl.trim(),
       rootDirectory: normaliseAppFolder(raw.rootDirectory),
+      repositoryToken: raw.isPrivate ? raw.repositoryToken.trim() || null : null,
       buildCommand: raw.buildCommand.trim() || null,
       startCommand: raw.startCommand.trim() || null,
       appPort: raw.appPort ?? null,
       healthCheckPath: raw.healthCheckPath.trim() || null,
     };
     this.saving.set(true);
-    const call$ = this.isEdit()
+    const saved$ = this.isEdit()
       ? this.projectApi.update(Number(this.id()), request)
       : this.projectApi.create(request);
+    const call$ = removeSavedToken
+      ? saved$.pipe(switchMap((project) => this.projectApi.removeRepositoryToken(project.id)))
+      : saved$;
     call$.subscribe({
       next: (project) => {
         this.messages.add({
@@ -262,7 +297,8 @@ export class ProjectFormComponent implements OnInit {
     if (this.isEdit()) return;
     const { repositoryUrl, branch, rootDirectory } = this.form.controls;
     if (repositoryUrl.invalid || !repositoryUrl.value.trim() || branch.invalid || rootDirectory.invalid) return;
-    const key = [repositoryUrl.value.trim(), branch.value.trim(), normaliseAppFolder(rootDirectory.value)].join('|');
+    const key = [repositoryUrl.value.trim(), branch.value.trim(), normaliseAppFolder(rootDirectory.value),
+      this.typedToken() ?? ''].join('|');
     if (key === this.lastAutoDetect) return;
     this.lastAutoDetect = key;
     this.detect(false);
@@ -282,11 +318,13 @@ export class ProjectFormComponent implements OnInit {
     this.detecting.set(true);
     this.detectError.set(null);
     this.projectApi
-      .detect(repositoryUrl.value.trim(), branch.value.trim(), normaliseAppFolder(rootDirectory.value))
+      .detect(repositoryUrl.value.trim(), branch.value.trim(), normaliseAppFolder(rootDirectory.value),
+        this.typedToken(), this.isEdit() ? Number(this.id()) : null)
       .subscribe({
         next: (result) => {
           this.detecting.set(false);
           this.detection.set(result);
+          if (result.notes.some((n) => n.includes("isn't public"))) this.form.controls.isPrivate.setValue(true);
           if (result.appType) this.applyDetection(result, force);
         },
         error: (err: ApiError) => {
@@ -294,6 +332,34 @@ export class ProjectFormComponent implements OnInit {
           this.detectError.set(err.detail);
         },
       });
+  }
+
+  /** The token typed into the form for a private repository (not the saved one, which the server uses itself). */
+  private typedToken(): string | null {
+    const { isPrivate, repositoryToken } = this.form.controls;
+    return isPrivate.value && repositoryToken.valid ? repositoryToken.value.trim() || null : null;
+  }
+
+  /** The repository looked private to detection: open the token box so the user sees what to do. */
+  protected readonly looksPrivate = computed(() =>
+    (this.detection()?.notes ?? []).some((n) => n.includes("isn't public") || n.includes('access token')),
+  );
+
+  /** Edit page: forget the saved access token. */
+  protected removeToken(): void {
+    this.removingToken.set(true);
+    this.projectApi.removeRepositoryToken(Number(this.id())).subscribe({
+      next: () => {
+        this.removingToken.set(false);
+        this.savedToken.set(null);
+        this.form.controls.isPrivate.setValue(false);
+        this.messages.add({ severity: 'success', summary: 'Access token removed', detail: 'The repository is read as public now.' });
+      },
+      error: (err: ApiError) => {
+        this.removingToken.set(false);
+        this.messages.add({ severity: 'error', summary: err.title, detail: err.detail });
+      },
+    });
   }
 
   /** "These folders look like apps": choosing one sets App folder and checks it. */

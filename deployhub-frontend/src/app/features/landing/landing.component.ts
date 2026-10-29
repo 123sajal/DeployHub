@@ -1,10 +1,14 @@
 import { Component } from '@angular/core';
+import { ThemeToggleComponent } from '../../core/components/shared/theme-toggle.component';
 import { RouterLink } from '@angular/router';
 import { ButtonModule } from 'primeng/button';
+import { LogoComponent } from '../../core/components/shared/logo.component';
+
+import { AuthBackdropComponent } from '../../core/components/shared/auth-backdrop.component';
 
 @Component({
   selector: 'app-landing',
-  imports: [RouterLink, ButtonModule],
+  imports: [RouterLink, ButtonModule, ThemeToggleComponent, LogoComponent, AuthBackdropComponent],
   templateUrl: './landing.component.html',
   styleUrl: './landing.component.scss',
 })

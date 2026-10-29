@@ -69,7 +69,7 @@ class JobQueueConcurrencyIntegrationTest extends IntegrationTestSupport {
         for (int i = 0; i < deploymentsToCreate; i++) {
             // Spread over 5 users (the per-user admission limit is 5).
             if (i % 5 == 0 && i > 0) {
-                mockMvc = mvcAs(registerUser("User " + i, "user" + i + "@example.com"));
+                mockMvc = mvcAs(registerUser("User " + (char) ('A' + i), "user" + i + "@example.com"));
             }
             createDeployment(createProject("app-" + i, "npm ci"));
         }

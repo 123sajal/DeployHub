@@ -23,6 +23,9 @@ public final class LogSanitizer {
                     "$1$2" + MASK),
             new Rule(Pattern.compile("(?i)\\bbearer\\s+[A-Za-z0-9._~+/-]+=*"), "Bearer " + MASK),
             new Rule(Pattern.compile("\\bgh[pousr]_[A-Za-z0-9]{20,}\\b"), MASK),
+            new Rule(Pattern.compile("\\bgithub_pat_[A-Za-z0-9_]{20,}\\b"), MASK),
+            new Rule(Pattern.compile("\\bglpat-[A-Za-z0-9_-]{20,}"), MASK),
+            new Rule(Pattern.compile("(?i)(authorization:\\s*basic\\s+)[A-Za-z0-9+/=]+"), "$1" + MASK),
             new Rule(Pattern.compile("\\bAKIA[0-9A-Z]{16}\\b"), MASK));
 
     private LogSanitizer() {

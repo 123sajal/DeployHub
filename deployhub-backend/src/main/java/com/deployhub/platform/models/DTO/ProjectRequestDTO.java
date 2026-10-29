@@ -30,6 +30,14 @@ public record ProjectRequestDTO(
         @NotNull
         ApplicationType appType,
 
+        /**
+         * Access token for a private repository (read-only is enough). Write-only: empty keeps the saved token; to remove
+         * it use DELETE /api/projects/{id}/repository-token.
+         */
+        @Size(max = 500)
+        @Pattern(regexp = "^\\s*[A-Za-z0-9_.~+/=:-]*\\s*$", message = "is not a valid access token")
+        String repositoryToken,
+
         /** Folder inside the repository that holds the app, e.g. "backend" or "apps/web"; empty = repository root. */
         @Size(max = 200)
         @Pattern(regexp = "^\\s*(\\./)?[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*/?\\s*$|^\\s*$",
@@ -62,6 +70,14 @@ public record ProjectRequestDTO(
         repositoryUrl = trim(repositoryUrl);
         branch = trim(branch);
         healthCheckPath = trim(healthCheckPath);
+        repositoryToken = repositoryToken == null || repositoryToken.isBlank() ? null : repositoryToken.trim();
+    }
+
+    /** Never prints the token (records print every field by default). */
+    @Override
+    public String toString() {
+        return "ProjectRequestDTO[name=" + name + ", repositoryUrl=" + repositoryUrl + ", branch=" + branch
+                + ", appType=" + appType + ", repositoryToken=" + (repositoryToken == null ? "none" : "***") + "]";
     }
 
     private static String trim(String value) {

@@ -1,7 +1,8 @@
-<main class="dh-auth">
+<main class="dh-auth dh-auth-3d">
+  <app-auth-backdrop />
   <form class="dh-auth-card" [formGroup]="form" (ngSubmit)="submit()" novalidate aria-labelledby="login-title">
     <a class="dh-auth-brand" routerLink="/">
-      <span class="logo" aria-hidden="true"><i class="pi pi-bolt"></i></span> DeployHub
+      <app-logo />
     </a>
     <h1 id="login-title">Log in</h1>
     <p class="sub">Welcome back. Pick up where you left off.</p>
@@ -46,4 +47,5 @@
 
     <p class="switch">New to DeployHub? <a routerLink="/signup" [queryParams]="{ returnUrl: returnUrl() }">Create an account</a></p>
   </form>
+  <app-assistant-chat page="login" />
 </main>

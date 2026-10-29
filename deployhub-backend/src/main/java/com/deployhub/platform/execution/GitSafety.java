@@ -28,6 +28,31 @@ public final class GitSafety {
     }
 
     /**
+     * Credentials for one private repository, as git configuration in environment variables (GIT_CONFIG_COUNT/KEY/VALUE):
+     * an Authorization header sent only to that repository's host. Never on the command line, so it can't show up in
+     * process lists or logs. Empty when there is no token.
+     */
+    public static Map<String, String> authEnvironment(String repositoryUrl, String token) {
+        if (token == null || token.isBlank() || repositoryUrl == null) {
+            return Map.of();
+        }
+        java.net.URI uri = java.net.URI.create(repositoryUrl.trim());
+        String host = uri.getHost() == null ? "" : uri.getHost().toLowerCase(java.util.Locale.ROOT);
+        String user = switch (host) {
+            case "gitlab.com" -> "oauth2";
+            case "bitbucket.org" -> "x-token-auth";
+            default -> "x-access-token"; // GitHub
+        };
+        String basic = java.util.Base64.getEncoder().encodeToString((user + ":" + token.trim())
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        Map<String, String> env = new HashMap<>();
+        env.put("GIT_CONFIG_COUNT", "1");
+        env.put("GIT_CONFIG_KEY_0", "http." + uri.getScheme() + "://" + host + "/.extraheader");
+        env.put("GIT_CONFIG_VALUE_0", "Authorization: Basic " + basic);
+        return env;
+    }
+
+    /**
      * No credentials from anywhere: system/global config, askpass helpers (e.g. an IDE's), or a prompt.
      * A null value means "remove this variable".
      */

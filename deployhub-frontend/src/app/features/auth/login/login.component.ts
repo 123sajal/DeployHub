@@ -6,14 +6,17 @@ import { ButtonModule } from 'primeng/button';
 import { InputTextModule } from 'primeng/inputtext';
 import { MessageModule } from 'primeng/message';
 
+import { AssistantChatComponent } from '../../../core/components/assistant/assistant-chat.component';
+import { AuthBackdropComponent } from '../../../core/components/shared/auth-backdrop.component';
 import { ApiError } from '../../../core/models/api.models';
 import { AuthService } from '../../../core/services/auth/auth.service';
 import { safeReturnUrl } from '../../../core/utils/safe-return-url';
 import { authErrorMessage } from '../auth-errors';
+import { LogoComponent } from '../../../core/components/shared/logo.component';
 
 @Component({
   selector: 'app-login',
-  imports: [ReactiveFormsModule, RouterLink, ButtonModule, InputTextModule, MessageModule],
+  imports: [ReactiveFormsModule, RouterLink, ButtonModule, InputTextModule, MessageModule, AssistantChatComponent, AuthBackdropComponent, LogoComponent],
   templateUrl: './login.component.html',
 })
 export class LoginComponent {

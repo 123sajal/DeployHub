@@ -3,7 +3,7 @@
   margin: 0 auto;
   padding: 0 1.25rem;
   background:
-    radial-gradient(600px 300px at 50% -60px, rgba(99, 102, 241, 0.25), transparent 70%);
+    radial-gradient(600px 300px at 50% -60px, var(--dh-glow), transparent 70%);
 }
 
 .nav {
@@ -34,15 +34,6 @@
   text-decoration: none;
 }
 
-.logo {
-  display: grid;
-  place-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, var(--dh-primary-strong), #a855f7);
-  color: #fff;
-}
 
 .hero {
   text-align: center;
@@ -56,7 +47,7 @@
 }
 
 .grad {
-  background: linear-gradient(90deg, #818cf8, #c084fc 60%, #f0abfc);
+  background: linear-gradient(90deg, var(--dh-accent), var(--dh-primary) 70%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -111,7 +102,7 @@
   border: 1px solid var(--dh-border-strong);
   border-radius: var(--dh-radius-lg);
   background: var(--dh-bg-elevated);
-  box-shadow: 0 30px 80px -20px rgba(99, 102, 241, 0.35);
+  box-shadow: var(--dh-shadow);
   overflow: hidden;
 }
 
@@ -160,7 +151,7 @@
   }
   &.live {
     color: var(--dh-success);
-    border: 1px solid rgba(52, 211, 153, 0.4);
+    border: 1px solid color-mix(in srgb, var(--dh-success) 40%, transparent);
   }
   .pi {
     font-size: 0.75rem;
@@ -171,18 +162,19 @@
   margin: 0;
   padding: 1rem;
   border-radius: 8px;
-  background: #07080c;
+  background: var(--dh-term-bg);
+  color: var(--dh-term-text);
   font-size: 0.8rem;
   line-height: 1.7;
   overflow-x: auto;
   .t {
-    color: var(--dh-text-faint);
+    color: var(--dh-term-faint);
   }
   .i {
-    color: var(--dh-info);
+    color: var(--dh-term-info);
   }
   .s {
-    color: var(--dh-success);
+    color: var(--dh-term-success);
   }
 }
 

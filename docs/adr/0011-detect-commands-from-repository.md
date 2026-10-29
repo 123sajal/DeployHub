@@ -30,6 +30,12 @@ ever fix that. They shouldn't have to: DeployHub can read the repository.
    combination); "Detect from repository" re-runs it on New and Edit and always applies. Automatic detection keeps
    commands the user wrote. "Use folder: backend / frontend" buttons set the App folder and detect again.
 
+6. **Lock files with a fallback** (added the same day): `(npm ci || npm install)`, and likewise for yarn and pnpm.
+   A lock file made by npm 11 (current macOS installs) can fail `npm ci` on the build image's npm 10 ("Missing:
+   @emnapi/core from lock file", EUSAGE), which happened with DeployHub's own frontend. Users shouldn't need to know
+   npm versions: the exact install is tried first, a normal install if the lock file doesn't fit. The build-error
+   hint explains the same if an older command still uses plain `npm ci`.
+
 ## Consequences / limitations
 - Detection suggests, it doesn't guarantee: unusual projects (custom scripts, monorepo tools) may still need edits;
   build-error hints (e.g. missing npm script) cover the common failures that remain.

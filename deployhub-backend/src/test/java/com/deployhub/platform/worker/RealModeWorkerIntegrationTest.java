@@ -479,4 +479,73 @@ class RealModeWorkerIntegrationTest extends IntegrationTestSupport {
                 .andExpect(jsonPath("$.errors.startCommand").value("must not be blank"))
                 .andExpect(jsonPath("$.errors.buildCommand").value("must be a single line"));
     }
+
+    @Autowired com.deployhub.platform.deployment.ProjectGateways gatewaysForRaceTest;
+    @Autowired org.springframework.jdbc.core.JdbcTemplate jdbc;
+
+    /** BUG-16: projects that get their address at the same moment must all get different ports. */
+    @Test
+    void projectsGettingTheirAddressAtTheSameMomentGetDifferentPorts() throws Exception {
+        List<Long> projectIds = new ArrayList<>();
+        for (int i = 0; i < 8; i++) {
+            long projectId = createProject("race-" + i, "npm ci");
+            createDeployment(projectId);
+            worker.runAvailableJobs(5); // at most 5 deployments per user may be in progress
+            projectIds.add(projectId);
+        }
+        // Forget the addresses handed out one by one above, then hand them out again all at once.
+        projectIds.forEach(id -> {
+            var project = projectRepository.findById(id).orElseThrow();
+            project.setPublicPort(null);
+            projectRepository.saveAndFlush(project);
+        });
+        CountDownLatch start = new CountDownLatch(1);
+        List<CompletableFuture<Void>> all = projectIds.stream().map(id -> CompletableFuture.runAsync(() -> {
+            try {
+                start.await();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            gatewaysForRaceTest.refresh(id);
+        })).toList();
+        start.countDown();
+        CompletableFuture.allOf(all.toArray(CompletableFuture[]::new)).get(30, TimeUnit.SECONDS);
+
+        List<Integer> ports = projectIds.stream().map(id -> projectRepository.findById(id).orElseThrow().getPublicPort()).toList();
+        assertThat(ports).doesNotContainNull().doesNotHaveDuplicates();
+    }
+
+    /** BUG-18: a deployment looks LIVE a moment before its job has finished; deleting then must wait. */
+    @Test
+    void aProjectWhoseDeploymentIsStillFinishingCantBeDeletedYet() throws Exception {
+        long projectId = createProject("api", "npm ci");
+        long id = createDeployment(projectId);
+        worker.runAvailableJobs(10);
+        // As in the moment between LIVE and the job's last steps (the queue's own code never exposes a setter).
+        jdbc.update("UPDATE deployment_jobs SET status = 'RUNNING' WHERE deployment_id = ?", id);
+
+        mockMvc.perform(delete("/api/projects/{id}", projectId))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.detail").value(org.hamcrest.Matchers.containsString("still finishing")));
+
+        jdbc.update("UPDATE deployment_jobs SET status = 'SUCCEEDED' WHERE deployment_id = ?", id);
+        mockMvc.perform(delete("/api/projects/{id}", projectId)).andExpect(status().isNoContent());
+    }
+
+    /** Review #4: a saved token that can't be decrypted fails the deploy with what to do, without pointless retries. */
+    @Test
+    void anUnreadableAccessTokenFailsTheDeployWithWhatToDo() throws Exception {
+        long projectId = createProject("secret-app", "npm ci");
+        var project = projectRepository.findById(projectId).orElseThrow();
+        project.setRepoTokenEncrypted("v1:not-a-real-ciphertext");
+        projectRepository.saveAndFlush(project);
+
+        long id = createDeployment(projectId);
+        worker.runAvailableJobs(10);
+
+        var deployment = deploymentRepository.findById(id).orElseThrow();
+        assertThat(deployment.getStatus()).isEqualTo(DeploymentStatus.FAILED);
+        assertThat(deployment.getFailureReason()).contains("access token can't be read").contains("Paste the token again");
+        assertThat(jobRepository.findByDeploymentId(id).orElseThrow().getAttempt()).as("not retried").isEqualTo(1);
+    }
 }

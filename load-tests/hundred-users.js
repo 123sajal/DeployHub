@@ -81,7 +81,7 @@ function signUpAndSetUp() {
     read('/api/auth/csrf', 204); // first visit: get the CSRF cookie
     me.email = `load-${RUN}-${exec.vu.idInTest}@example.com`;
     const res = write('POST', '/api/auth/register',
-      { displayName: `Load User ${exec.vu.idInTest}`, email: me.email, password: PASSWORD }, 201);
+      { displayName: `Load User ${letters(exec.vu.idInTest)}`, email: me.email, password: PASSWORD }, 201);
     if (!check(res, { 'sign up: 201 Created': (r) => r.status === 201 })) {
       fail(`sign up failed (${res.status}): ${res.body}`);
     }
@@ -166,4 +166,11 @@ export function setup() {
   if (BASE.includes(':8080') && !__ENV.I_AM_SURE) {
     fail('Refusing to load-test your real DeployHub on 8080 (it would create 100 accounts). Use the test backend.');
   }
+}
+
+// Names may contain only letters and spaces: 1 -> "A", 26 -> "Z", 27 -> "AA".
+function letters(n) {
+  let out = '';
+  for (let i = Number(n); i > 0; i = Math.floor((i - 1) / 26)) out = String.fromCharCode(65 + ((i - 1) % 26)) + out;
+  return out || 'A';
 }

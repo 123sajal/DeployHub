@@ -2,6 +2,7 @@ import { Component, computed, effect, inject, input, output, signal, untracked }
 import { MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
 
+import { AssistantHintComponent } from '../../../core/components/assistant/assistant-hint.component';
 import { ApiError, EnvRequirementItem, EnvRequirements, EnvVarKind } from '../../../core/models/api.models';
 import { ProjectApiService } from '../../../core/services/api/project-api.service';
 
@@ -11,7 +12,7 @@ const KIND_LABEL: Record<EnvVarKind, string> = {
   DATABASE_ALIAS: 'database',
   SETTING: 'setting',
   PLATFORM: 'set by DeployHub',
-  EXTERNAL: 'key from another service',
+  EXTERNAL: 'from another service',
   LOCAL_ONLY: 'address',
   UNKNOWN: 'setting',
 };
@@ -22,7 +23,7 @@ const KIND_LABEL: Record<EnvVarKind, string> = {
  */
 @Component({
   selector: 'app-project-env-requirements',
-  imports: [ButtonModule],
+  imports: [ButtonModule, AssistantHintComponent],
   template: `
     <div class="needs">
       <div class="head">
@@ -64,6 +65,9 @@ const KIND_LABEL: Record<EnvVarKind, string> = {
           </ul>
         } @else if (d.items.length) {
           <p class="ok"><i class="pi pi-check-circle" aria-hidden="true"></i> Everything the app needs is set.</p>
+        }
+        @if (missingRequiredText(); as text) {
+          <app-assistant-hint topic="MISSING_SETTINGS" [projectId]="projectId()" [errorText]="text" />
         }
         @for (note of d.notes; track note) {
           <p class="dh-muted note">{{ note }}</p>
@@ -107,6 +111,13 @@ export class ProjectEnvRequirementsComponent {
   protected readonly missing = computed(() =>
     (this.data()?.items ?? []).filter((i) => i.status === 'MISSING').sort((a, b) => Number(b.required) - Number(a.required)),
   );
+  /** The required missing settings, for the assistant to explain (names and what they are, never values). */
+  protected readonly missingRequiredText = computed(() => {
+    const required = this.missing().filter((i) => i.required);
+    return required.length
+      ? 'Missing required settings: ' + required.map((i) => `${i.name} (${this.kindLabel(i)}: ${i.help})`).join('; ')
+      : null;
+  });
   protected readonly summary = computed(() => {
     const d = this.data();
     if (!d || !d.items.length) return null;

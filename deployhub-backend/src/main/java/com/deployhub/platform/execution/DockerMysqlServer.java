@@ -5,11 +5,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
@@ -32,6 +34,8 @@ public class DockerMysqlServer implements ManagedDatabaseServer {
     private static final Pattern IDENTIFIER = Pattern.compile("^[a-z0-9_]{1,32}$");
     private static final Pattern PASSWORD = Pattern.compile("^[A-Za-z0-9]{12,64}$");
     private static final Duration QUICK = Duration.ofSeconds(60);
+    /** Importing or exporting a large database can take a while. */
+    private static final Duration TRANSFER = Duration.ofMinutes(10);
     private static final int APP_PORT = 3306;
 
     private final CommandRunner runner;
@@ -128,6 +132,71 @@ public class DockerMysqlServer implements ManagedDatabaseServer {
         requireIdentifier(username);
         requireOk(sql(adminPassword, "DROP DATABASE IF EXISTS `" + databaseName + "`; "
                 + "DROP USER IF EXISTS '" + username + "'@'%';"), "Deleting the database");
+    }
+
+    @Override
+    public int countTables(String adminPassword, String databaseName) {
+        requireIdentifier(databaseName);
+        List<String> out = new ArrayList<>();
+        Map<String, String> env = new HashMap<>();
+        env.put("MYSQL_PWD", adminPassword);
+        env.put("DEPLOYHUB_SQL", "SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = '" + databaseName + "';");
+        CommandRunner.Result result = run(List.of("exec", "-e", "MYSQL_PWD", "-e", "DEPLOYHUB_SQL", settings.containerName(),
+                "sh", "-c", "mysql --protocol=tcp -h127.0.0.1 -uroot -N -B -e \"$DEPLOYHUB_SQL\""), env, QUICK, out::add);
+        requireOk(result, "Counting the tables");
+        return out.stream().map(String::trim).filter(l -> l.matches("\\d+")).mapToInt(Integer::parseInt).findFirst().orElse(0);
+    }
+
+    @Override
+    public void importSql(String adminPassword, String databaseName, String username, String userPassword, Path sqlFile,
+                          boolean replace) {
+        requireIdentifier(databaseName);
+        requireIdentifier(username);
+        if (replace) {
+            requireOk(sql(adminPassword, "DROP DATABASE IF EXISTS `" + databaseName + "`; "
+                    + "CREATE DATABASE `" + databaseName + "` CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci; "
+                    + "GRANT ALL PRIVILEGES ON `" + databaseName + "`.* TO '" + username + "'@'%';"),
+                    "Emptying the database");
+        }
+        String inContainer = "/tmp/deployhub-import-" + UUID.randomUUID() + ".sql";
+        try {
+            requireOk(run(List.of("cp", sqlFile.toString(), settings.containerName() + ":" + inContainer),
+                    Map.of(), QUICK, line -> { }), "Copying the file to the database server");
+            CommandRunner.Result result = run(List.of("exec", "-e", "MYSQL_PWD", settings.containerName(), "sh", "-c",
+                    "mysql --protocol=tcp -h127.0.0.1 -u" + username + " --default-character-set=utf8mb4 "
+                            + "--database=" + databaseName + " < " + inContainer),
+                    Map.of("MYSQL_PWD", userPassword), TRANSFER, line -> { });
+            if (!result.ok()) {
+                String reason = lastLine(result);
+                if (result.timedOut() || reason.toLowerCase(java.util.Locale.ROOT).contains("cannot connect to the docker")) {
+                    requireOk(result, "Importing");
+                }
+                throw new SqlFailed(reason);
+            }
+        } finally {
+            run(List.of("exec", settings.containerName(), "rm", "-f", inContainer), Map.of(), QUICK, line -> { });
+        }
+    }
+
+    @Override
+    public void exportSql(String databaseName, String username, String userPassword, Path target) {
+        requireIdentifier(databaseName);
+        requireIdentifier(username);
+        String inContainer = "/tmp/deployhub-export-" + UUID.randomUUID() + ".sql";
+        try {
+            CommandRunner.Result dump = run(List.of("exec", "-e", "MYSQL_PWD", settings.containerName(), "sh", "-c",
+                    "mysqldump --protocol=tcp -h127.0.0.1 -u" + username + " --no-tablespaces --single-transaction "
+                            + "--skip-lock-tables --triggers --default-character-set=utf8mb4 " + databaseName
+                            + " > " + inContainer), Map.of("MYSQL_PWD", userPassword), TRANSFER, line -> { });
+            if (!dump.ok() && lastLine(dump).contains("Access denied")) {
+                throw new SqlFailed(lastLine(dump));
+            }
+            requireOk(dump, "Exporting the database");
+            requireOk(run(List.of("cp", settings.containerName() + ":" + inContainer, target.toString()),
+                    Map.of(), QUICK, line -> { }), "Copying the export from the database server");
+        } finally {
+            run(List.of("exec", settings.containerName(), "rm", "-f", inContainer), Map.of(), QUICK, line -> { });
+        }
     }
 
     /** Runs SQL as root inside the server container; password and SQL travel as environment variables. */

@@ -1,13 +1,14 @@
-<div class="landing">
+<div class="landing dh-3d">
+  <app-auth-backdrop [edgesOnly]="true" />
   <header class="nav">
     <a class="brand" routerLink="/">
-      <span class="logo" aria-hidden="true"><i class="pi pi-bolt"></i></span>
-      DeployHub
+      <app-logo />
     </a>
     <nav aria-label="Landing">
       <a href="#features">Features</a>
       <a href="#architecture">Architecture</a>
       <a routerLink="/login">Log in</a>
+      <app-theme-toggle />
     </nav>
   </header>
 

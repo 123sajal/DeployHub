@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 
 import { environment } from '../../../../environments/environment';
-import { ApplicationType, DetectResult, EnvRequirements, EnvVar, Page, Project, ProjectDatabase, ProjectRequest, ProjectRoute, PublicLink } from '../../models/api.models';
+import { ApplicationType, DatabaseImport, DetectResult, EnvRequirements, EnvVar, Page, Project, ProjectDatabase, ProjectRequest, ProjectRoute, PublicLink } from '../../models/api.models';
 
 export interface ProjectQuery {
   search?: string;
@@ -33,8 +33,25 @@ export class ProjectApiService {
   }
 
   /** Looks at the repository's files and suggests the type and commands; nothing is saved. */
-  detect(repositoryUrl: string, branch: string, rootDirectory: string | null): Observable<DetectResult> {
-    return this.http.post<DetectResult>(`${this.baseUrl}/detect`, { repositoryUrl, branch, rootDirectory });
+  detect(
+    repositoryUrl: string,
+    branch: string,
+    rootDirectory: string | null,
+    repositoryToken: string | null = null,
+    projectId: number | null = null,
+  ): Observable<DetectResult> {
+    return this.http.post<DetectResult>(`${this.baseUrl}/detect`, {
+      repositoryUrl,
+      branch,
+      rootDirectory,
+      repositoryToken,
+      projectId,
+    });
+  }
+
+  /** Forgets the project's access token (its repository is then read as public). */
+  removeRepositoryToken(projectId: number): Observable<Project> {
+    return this.http.delete<Project>(`${this.baseUrl}/${projectId}/repository-token`);
   }
 
   update(id: number, request: ProjectRequest): Observable<Project> {
@@ -97,6 +114,19 @@ export class ProjectApiService {
   }
 
   /** Deletes the database with all its data. */
+  /** Loads a .sql file into the project's database; replace = delete the current data first. */
+  importDatabase(projectId: number, file: File, replace: boolean): Observable<DatabaseImport> {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('replace', String(replace));
+    return this.http.post<DatabaseImport>(`${this.baseUrl}/${projectId}/database/import`, form);
+  }
+
+  /** Address of the .sql download of the project's database (a normal link: the session cookie goes with it). */
+  databaseExportUrl(projectId: number): string {
+    return `${this.baseUrl}/${projectId}/database/export`;
+  }
+
   removeDatabase(projectId: number): Observable<void> {
     return this.http.delete<void>(`${this.baseUrl}/${projectId}/database`);
   }

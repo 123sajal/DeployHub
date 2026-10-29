@@ -5,6 +5,8 @@ import { NavigationEnd, Router, RouterLink, RouterLinkActive, RouterOutlet } fro
 import { filter } from 'rxjs';
 
 import { Health } from '../../models/api.models';
+import { AssistantChatComponent } from '../assistant/assistant-chat.component';
+import { ThemeToggleComponent } from '../shared/theme-toggle.component';
 import { PlatformApiService } from '../../services/api/platform-api.service';
 import { AuthService } from '../../services/auth/auth.service';
 import { MessageService } from 'primeng/api';
@@ -14,10 +16,13 @@ interface NavItem {
   icon: string;
   link: string;
 }
+import { LogoComponent } from '../shared/logo.component';
+
+import { AuthBackdropComponent } from '../shared/auth-backdrop.component';
 
 @Component({
   selector: 'app-shell',
-  imports: [RouterOutlet, RouterLink, RouterLinkActive, LowerCasePipe],
+  imports: [RouterOutlet, RouterLink, RouterLinkActive, LowerCasePipe, AssistantChatComponent, ThemeToggleComponent, LogoComponent, AuthBackdropComponent],
   templateUrl: './app-shell.component.html',
   styleUrl: './app-shell.component.scss',
 })

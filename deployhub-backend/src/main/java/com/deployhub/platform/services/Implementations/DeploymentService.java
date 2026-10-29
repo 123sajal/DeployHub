@@ -289,6 +289,9 @@ public class DeploymentService implements IDeploymentService {
                     ? "Deployment #" + id + " is live. Deploy a newer version first (or delete the project)."
                     : "Deployment #" + id + " is still in progress. Cancel it first.");
         }
+        if (jobRepository.isRunning(id)) {
+            throw new ConflictException("Deployment #" + id + " is still finishing. Try again in a few seconds.");
+        }
         Long projectId = deployment.getProject().getId();
         Long userId = currentUserService.currentUserId();
         String container = deployment.getContainerName();

@@ -3,7 +3,7 @@ import { Injectable, computed, inject, signal } from '@angular/core';
 import { Observable, catchError, finalize, of, tap } from 'rxjs';
 
 import { environment } from '../../../../environments/environment';
-import { CurrentUser, LoginRequest, RegisterRequest, ResetPasswordRequest } from '../../models/api.models';
+import { CurrentUser, LoginRequest, Occupation, RegisterRequest, ResetPasswordRequest } from '../../models/api.models';
 
 /**
  * Holds who is logged in. The login itself lives in an HttpOnly session cookie that JavaScript
@@ -40,6 +40,21 @@ export class AuthService {
     return this.http
       .post<CurrentUser>(`${this.baseUrl}/register`, request)
       .pipe(tap((user) => this.currentUser.set(user)));
+  }
+
+  /** Changes "student or working professional". */
+  updateOccupation(occupation: Occupation): Observable<CurrentUser> {
+    return this.http
+      .patch<CurrentUser>(`${this.baseUrl}/me`, { occupation })
+      .pipe(tap((user) => this.currentUser.set(user)));
+  }
+
+  /** Reloads the profile (e.g. after the student check changed it). Keeps the current one if the request fails. */
+  refresh(): Observable<CurrentUser | null> {
+    return this.http.get<CurrentUser>(`${this.baseUrl}/me`).pipe(
+      tap((user) => this.currentUser.set(user)),
+      catchError(() => of(this.currentUser())),
+    );
   }
 
   /** Asks for a reset code by email. The answer is the same whether or not the email has an account. */

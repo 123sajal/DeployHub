@@ -29,16 +29,6 @@ $sidebar-width: 240px;
   text-decoration: none;
 }
 
-.logo {
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, var(--dh-primary-strong), #a855f7);
-  color: #fff;
-  font-size: 0.85rem;
-}
 
 nav {
   display: flex;
@@ -116,7 +106,7 @@ nav {
   align-items: center;
   gap: 1rem;
   padding: 0.75rem 1.75rem;
-  background: rgba(11, 13, 18, 0.85);
+  background: var(--dh-topbar);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--dh-border);
 }
@@ -229,7 +219,7 @@ nav {
     inset: 0;
     z-index: 15;
     border: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--dh-scrim);
   }
 
   .menu-btn {

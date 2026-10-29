@@ -12,6 +12,9 @@ public record ProjectResponseDTO(
         ApplicationType appType,
         /** Folder inside the repository that holds the app; null = repository root. */
         String rootDirectory,
+        /** True when an access token for a private repository is saved (the token itself is never returned). */
+        boolean privateRepository,
+        java.time.Instant repositoryTokenUpdatedAt,
         String buildCommand,
         String startCommand,
         Integer appPort,

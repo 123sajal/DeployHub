@@ -1,5 +1,6 @@
 package com.deployhub.platform.services.Implementations;
 
+import com.deployhub.platform.assistant.AssistantBudget;
 import com.deployhub.platform.config.BillingProperties;
 import com.deployhub.platform.exceptions.PaymentRequiredException;
 import com.deployhub.platform.exceptions.PaymentVerificationException;
@@ -34,6 +35,7 @@ import java.security.MessageDigest;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.HexFormat;
 import java.util.Optional;
 import java.util.regex.Pattern;
@@ -98,7 +100,7 @@ public class BillingService implements IBillingService {
                 >= MAX_ORDERS_PER_HOUR) {
             throw new TooManyRequestsException("Too many payment attempts. Try again later.", Duration.ofHours(1));
         }
-        long amount = properties.pricePerDeploy();
+        long amount = priceFor(user); // decided here, never by the browser
         String currency = properties.currency();
         String orderId = gateway.createOrder(amount, currency, "user-" + userId + "-" + clock.millis());
         tx.executeWithoutResult(status -> {
@@ -157,9 +159,9 @@ public class BillingService implements IBillingService {
         }
         return Optional.of(paymentRepository.findFirstByUserIdAndStatusAndUsedAtIsNullOrderByIdAsc(userId,
                 PaymentStatus.PAID).orElseThrow(() -> new PaymentRequiredException(
-                freeProjectsUsedText() + " Each deploy of another project costs " + price()
+                freeProjectsUsedText() + " Each deploy of another project costs " + price(priceFor(user))
                         + (properties.razorpay().configured() ? "." : ", but payments aren't set up on this DeployHub yet."),
-                properties.pricePerDeploy(), properties.currency())));
+                priceFor(user), properties.currency())));
     }
 
     @Override
@@ -232,9 +234,11 @@ public class BillingService implements IBillingService {
     private BillingSummaryResponseDTO summaryFor(Long userId) {
         UserMaster user = userRepository.findById(userId).orElseThrow();
         int left = Math.max(0, properties.freeProjects() - user.getFreeProjectsUsed());
+        boolean student = verifiedStudent(user);
         return new BillingSummaryResponseDTO(properties.enabled(), properties.razorpay().configured(),
                 properties.pricePerDeploy(), properties.currency(), paymentRepository.countUnusedCredits(userId),
-                left > 0, properties.freeProjects(), left);
+                left > 0, properties.freeProjects(), left, priceFor(user), student,
+                properties.pricePerDeploy() - properties.priceFor(true));
     }
 
     private String freeProjectsUsedText() {
@@ -242,8 +246,16 @@ public class BillingService implements IBillingService {
         return free == 1 ? "Your free project is used." : "Your " + free + " free projects are used.";
     }
 
-    private String price() {
-        long amount = properties.pricePerDeploy();
+    /** Verified students (on today's date, India time) get the student discount. */
+    private boolean verifiedStudent(UserMaster user) {
+        return user.isVerifiedStudentOn(LocalDate.now(clock.withZone(AssistantBudget.INDIA)));
+    }
+
+    private long priceFor(UserMaster user) {
+        return properties.priceFor(verifiedStudent(user));
+    }
+
+    private String price(long amount) {
         String value = amount % 100 == 0 ? String.valueOf(amount / 100) : String.format("%d.%02d", amount / 100, amount % 100);
         return "INR".equals(properties.currency()) ? "₹" + value : value + " " + properties.currency();
     }

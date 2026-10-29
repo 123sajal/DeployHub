@@ -1,9 +1,10 @@
 import { DatePipe } from '@angular/common';
-import { Component, OnInit, inject, input, output, signal } from '@angular/core';
+import { Component, OnInit, computed, inject, input, output, signal } from '@angular/core';
 import { ConfirmationService, MessageService } from 'primeng/api';
 import { ButtonModule } from 'primeng/button';
 import { MessageModule } from 'primeng/message';
 
+import { AssistantHintComponent } from '../../../core/components/assistant/assistant-hint.component';
 import { ApiError, ProjectDatabase } from '../../../core/models/api.models';
 import { ProjectApiService } from '../../../core/services/api/project-api.service';
 
@@ -13,7 +14,7 @@ import { ProjectApiService } from '../../../core/services/api/project-api.servic
  */
 @Component({
   selector: 'app-project-database',
-  imports: [DatePipe, ButtonModule, MessageModule],
+  imports: [DatePipe, ButtonModule, MessageModule, AssistantHintComponent],
   template: `
     <h2 class="dh-card-title">Database</h2>
 
@@ -51,6 +52,37 @@ import { ProjectApiService } from '../../../core/services/api/project-api.servic
         Set for the app: <code>{{ db.environmentVariables.join(', ') }}</code>. Deploy again after adding the
         database or resetting its password.
       </p>
+      <div class="data">
+        <h3>Your data</h3>
+        <p class="dh-muted hint">
+          Bring the data from a database on your computer: export it to a <code>.sql</code> file, e.g.
+          <code>mysqldump -u root -p mydb &gt; mydb.sql</code>, or Export in MySQL Workbench / phpMyAdmin (up to 50 MB).
+          It goes into this project's database only.
+        </p>
+        <div class="import">
+          <input #fileInput type="file" accept=".sql" aria-label="SQL file to import" (change)="pick(fileInput.files)" />
+          <label class="check">
+            <input type="checkbox" [checked]="replace()" (change)="replace.set($any($event.target).checked)" />
+            Delete the current data first
+          </label>
+          <p-button label="Import data" icon="pi pi-upload" size="small" [disabled]="!file() || working()"
+                    [loading]="importing()" (onClick)="importData(fileInput)" />
+          <a class="export" [href]="exportUrl()" download>
+            <i class="pi pi-download" aria-hidden="true"></i> Export data (.sql)
+          </a>
+        </div>
+        @if (replace()) {
+          <small class="dh-error">Everything now in the database is deleted before the import. Export a backup first if
+            you might need it.</small>
+        }
+        @if (importResult(); as result) {
+          <p-message severity="success" styleClass="result" [text]="result" />
+        }
+        @if (importError(); as message) {
+          <p class="dh-error" role="alert">{{ message }}</p>
+          <app-assistant-hint topic="IMPORT_REFUSED" [projectId]="projectId()" [errorText]="message" [auto]="true" />
+        }
+      </div>
       <div class="actions">
         <p-button label="Reset password" icon="pi pi-refresh" severity="secondary" [outlined]="true" size="small"
                   [loading]="working()" (onClick)="resetPassword()" />
@@ -74,6 +106,13 @@ import { ProjectApiService } from '../../../core/services/api/project-api.servic
     .actions { display: flex; gap: 0.5rem; justify-content: space-between; flex-wrap: wrap; }
     .secret { font-size: 0.95rem; margin: 0 0.4rem; user-select: all; }
     :host ::ng-deep .once { margin-bottom: 0.75rem; }
+    .data { border-top: 1px solid var(--dh-border); padding-top: 0.6rem; margin: 0.6rem 0; }
+    .data h3 { margin: 0 0 0.25rem; font-size: 0.9rem; }
+    .import { display: flex; align-items: center; gap: 0.5rem 0.9rem; flex-wrap: wrap; font-size: 0.85rem; }
+    .import input[type='file'] { max-width: 100%; font-size: 0.82rem; }
+    .check { display: inline-flex; align-items: center; gap: 0.35rem; cursor: pointer; }
+    .export { margin-left: auto; font-size: 0.85rem; }
+    :host ::ng-deep .result { margin-top: 0.5rem; }
   `,
 })
 export class ProjectDatabaseComponent implements OnInit {
@@ -90,6 +129,12 @@ export class ProjectDatabaseComponent implements OnInit {
   protected readonly loading = signal(true);
   protected readonly working = signal(false);
   protected readonly error = signal<ApiError | null>(null);
+  protected readonly file = signal<File | null>(null);
+  protected readonly replace = signal(false);
+  protected readonly importing = signal(false);
+  protected readonly importResult = signal<string | null>(null);
+  protected readonly importError = signal<string | null>(null);
+  protected readonly exportUrl = computed(() => this.api.databaseExportUrl(this.projectId()));
 
   ngOnInit(): void {
     this.api.getDatabase(this.projectId()).subscribe({
@@ -126,6 +171,34 @@ export class ProjectDatabaseComponent implements OnInit {
       error: (err: ApiError) => {
         this.working.set(false);
         this.error.set(err);
+      },
+    });
+  }
+
+  protected pick(files: FileList | null): void {
+    this.file.set(files?.[0] ?? null);
+    this.importResult.set(null);
+    this.importError.set(null);
+  }
+
+  /** Uploads the chosen .sql file into the project's database. */
+  protected importData(input: HTMLInputElement): void {
+    const file = this.file();
+    if (!file) return;
+    this.importing.set(true);
+    this.importResult.set(null);
+    this.importError.set(null);
+    this.api.importDatabase(this.projectId(), file, this.replace()).subscribe({
+      next: (result) => {
+        this.importing.set(false);
+        this.importResult.set(result.message);
+        this.file.set(null);
+        this.replace.set(false);
+        input.value = '';
+      },
+      error: (err: ApiError) => {
+        this.importing.set(false);
+        this.importError.set(err.fieldErrors['file'] ?? err.detail);
       },
     });
   }

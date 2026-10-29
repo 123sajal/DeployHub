@@ -43,7 +43,8 @@ import java.util.List;
  * <ul>
  *   <li>Login creates a server-side session; the browser only holds the HttpOnly JSESSIONID cookie.</li>
  *   <li>CSRF: Angular echoes the XSRF-TOKEN cookie in an X-XSRF-TOKEN header on every write.</li>
- *   <li>Everything under /api requires a session except health, register, login and csrf.</li>
+ *   <li>Everything under /api requires a session except health, register, login, csrf and the assistant's
+ *       sign-up endpoints and chat.</li>
  * </ul>
  */
 @Configuration
@@ -101,6 +102,9 @@ public class SecurityConfig {
                             .requestMatchers(HttpMethod.POST, "/api/auth/register", "/api/auth/login",
                                     "/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
                             .requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()
+                            // The assistant helps before signing in too (limited per network, see AssistantService).
+                            .requestMatchers(HttpMethod.POST, "/api/assistant/signup/**", "/api/assistant/chat").permitAll()
+                            .requestMatchers(HttpMethod.GET, "/api/assistant/status").permitAll()
                             .requestMatchers("/api/health", "/actuator/health", "/actuator/health/liveness",
                                     "/actuator/health/readiness", "/error").permitAll()
                             // Metrics reveal load and internals: only the monitoring network may read them.

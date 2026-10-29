@@ -25,6 +25,9 @@ export interface Project {
   appType: ApplicationType;
   /** Folder in the repository with the app, e.g. "backend"; build and start commands run there. Null = root. */
   rootDirectory: string | null;
+  /** True when an access token for a private repository is saved (the token itself is never sent back). */
+  privateRepository: boolean;
+  repositoryTokenUpdatedAt: string | null;
   buildCommand: string | null;
   /** Null for Dockerfile projects that use their image's own start command. */
   startCommand: string | null;
@@ -113,6 +116,14 @@ export interface EnvRequirements {
   notes: string[];
 }
 
+/** POST /api/projects/{id}/database/import: what the import did. */
+export interface DatabaseImport {
+  tablesBefore: number;
+  tablesAfter: number;
+  /** What happened, in plain words (including lines DeployHub left out of the file). */
+  message: string;
+}
+
 /** POST /api/projects/detect: what the repository's files suggest. Any field may be null when nothing was found. */
 export interface DetectResult {
   appType: ApplicationType | null;
@@ -131,6 +142,8 @@ export interface ProjectRequest {
   appType: ApplicationType;
   /** Folder in the repository with the app, e.g. "backend"; null = the repository root. */
   rootDirectory: string | null;
+  /** Access token for a private repository; null keeps the saved one. Write-only. */
+  repositoryToken: string | null;
   buildCommand: string | null;
   startCommand: string | null;
   appPort: number | null;
@@ -210,7 +223,18 @@ export interface CurrentUser {
   id: number;
   email: string;
   displayName: string;
+  /** What the user told the sign-up assistant; null = not asked (e.g. signed up with the simple form). */
+  occupation?: Occupation | null;
+  /** True when the email was proven with a code at sign-up. */
+  emailVerified?: boolean;
+  /** Last day (yyyy-MM-dd, India time) the student discount applies; null = not a verified student. */
+  studentVerifiedUntil?: string | null;
+  studentVerifiedBy?: StudentProof | null;
 }
+
+export type Occupation = 'STUDENT' | 'PROFESSIONAL';
+
+export type StudentProof = 'ID_CARD' | 'COLLEGE_EMAIL';
 
 export interface LoginRequest {
   email: string;
@@ -228,6 +252,58 @@ export interface RegisterRequest {
   displayName: string;
   email: string;
   password: string;
+  occupation?: Occupation;
+  /** From the sign-up assistant's email code check; marks the email as proven. */
+  emailProof?: string;
+}
+
+// ---- AI assistant (ADR 0015) ----
+
+export interface AssistantStatus {
+  /** The AI can answer now (key set on the server and today's budget not used up). */
+  aiAvailable: boolean;
+  /** Student ID photos can be checked (not on a free AI tier that may use the content); else college email only. */
+  idCardCheck: boolean;
+}
+
+export interface SignupCheck {
+  /** The answer can be used. With a suggestion, the user picks the suggestion or keeps their own. */
+  ok: boolean;
+  value: string;
+  message: string;
+  suggestion: string | null;
+}
+
+export interface EmailProof {
+  email: string;
+  proof: string;
+  expiresAt: string;
+}
+
+export type ChatRole = 'USER' | 'ASSISTANT';
+
+export interface ChatTurn {
+  role: ChatRole;
+  text: string;
+}
+
+export type AssistantTopic = 'DEPLOYMENT_FAILED' | 'MISSING_SETTINGS' | 'PAYMENT_FAILED' | 'IMPORT_REFUSED';
+
+export interface AssistantReply {
+  text: string;
+  /** AI = written by the AI; BUILT_IN = a simple built-in answer (AI not set up, limit reached, or down). */
+  source: 'AI' | 'BUILT_IN';
+  /** Why a built-in answer was given. */
+  notice: string | null;
+  /** A saved AI explanation (showing it again costs nothing). */
+  saved: boolean;
+}
+
+export interface StudentVerification {
+  verified: boolean;
+  validUntil: string;
+  method: StudentProof;
+  message: string;
 }
 
 // ---- Durable deployment jobs (Milestone 4) ----
@@ -295,6 +371,12 @@ export interface BillingSummary {
   freeProjectAvailable: boolean;
   /** Free projects per account (e.g. 2: a backend and a frontend). */
   freeProjects: number;
+  /** What one deploy costs this user (pricePerDeploy minus the student discount, if it applies). */
+  yourPrice?: number;
+  /** The student discount applies today. */
+  verifiedStudent?: boolean;
+  /** The discount verified students get, in paise. */
+  studentDiscount?: number;
   /** Free projects this account can still get. */
   freeProjectsLeft: number;
 }

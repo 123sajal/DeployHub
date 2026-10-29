@@ -5,6 +5,7 @@ import { ButtonModule } from 'primeng/button';
 import { MessageModule } from 'primeng/message';
 import { firstValueFrom, forkJoin } from 'rxjs';
 
+import { AssistantHintComponent } from '../../../core/components/assistant/assistant-hint.component';
 import { PageStateComponent } from '../../../core/components/shared/page-state.component';
 import { ApiError, BillingSummary, Project } from '../../../core/models/api.models';
 import { BillingApiService } from '../../../core/services/api/billing-api.service';
@@ -20,7 +21,7 @@ import { formatPrice } from '../../../core/utils/money';
  */
 @Component({
   selector: 'app-project-payment',
-  imports: [RouterLink, ButtonModule, MessageModule, PageStateComponent],
+  imports: [RouterLink, ButtonModule, MessageModule, PageStateComponent, AssistantHintComponent],
   templateUrl: './project-payment.component.html',
   styleUrl: './project-payment.component.scss',
 })
@@ -42,8 +43,10 @@ export class ProjectPaymentComponent implements OnInit {
   protected readonly busy = signal(false);
   protected readonly price = computed(() => {
     const b = this.billing();
-    return b ? formatPrice(b.pricePerDeploy, b.currency) : '';
+    return b ? formatPrice(b.yourPrice ?? b.pricePerDeploy, b.currency) : '';
   });
+  /** The last payment error, for the assistant to explain. */
+  protected readonly paymentError = signal<string | null>(null);
 
   ngOnInit(): void {
     this.load();
@@ -76,6 +79,7 @@ export class ProjectPaymentComponent implements OnInit {
     const p = this.details();
     if (!p || this.busy()) return;
     this.busy.set(true);
+    this.paymentError.set(null);
     try {
       const order = await firstValueFrom(this.billingApi.createOrder());
       const paid = await this.checkout.pay(order, `One deploy of ${p.name}`);
@@ -90,6 +94,7 @@ export class ProjectPaymentComponent implements OnInit {
       }
       const err = e as Partial<ApiError> & { message?: string };
       this.messages.add({ severity: 'error', summary: err.title ?? 'Payment failed', detail: err.detail ?? err.message });
+      this.paymentError.set(`${err.title ?? 'Payment failed'}: ${err.detail ?? err.message ?? 'unknown error'}`);
     }
   }
 

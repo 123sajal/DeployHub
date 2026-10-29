@@ -178,14 +178,22 @@ public class EnvRequirementsService implements IEnvRequirementsService {
     }
 
     private Analysis analysis(ProjectMaster project) {
-        String key = project.getRepositoryUrl() + "|" + project.getBranch() + "|" + project.getRootDirectory();
+        String key = project.getRepositoryUrl() + "|" + project.getBranch() + "|" + project.getRootDirectory() + "|"
+                + project.getRepoTokenUpdatedAt();
         Cached cached = cache.get(project.getId());
         Instant now = clock.instant();
         if (cached != null && cached.key().equals(key) && cached.until().isAfter(now)) {
             return cached.analysis();
         }
         Analysis fresh;
-        try (IRepositoryFiles.Snapshot snapshot = files.open(project.getRepositoryUrl(), project.getBranch(), true)) {
+        String token;
+        try {
+            token = project.getRepoTokenEncrypted() == null ? null : cipher.decrypt(project.getRepoTokenEncrypted());
+        } catch (IllegalStateException e) {
+            return new Analysis(List.of(), List.of("The saved access token can't be read (was DEPLOYHUB_SECRETS_KEY "
+                    + "changed?). Paste it again on the project's Edit page."), false);
+        }
+        try (IRepositoryFiles.Snapshot snapshot = files.open(project.getRepositoryUrl(), project.getBranch(), true, token)) {
             fresh = analyse(snapshot, project.getRootDirectory() == null ? "" : project.getRootDirectory());
         } catch (IRepositoryFiles.RepositoryNotReadable e) {
             fresh = new Analysis(List.of(), List.of("Couldn't read the repository: " + e.getMessage()), false);
@@ -244,25 +252,36 @@ public class EnvRequirementsService implements IEnvRequirementsService {
             }
         }
         if (example.isPresent()) {
+            // A comment block explains the variables under it, up to the next blank line (its lines joined into one).
             String comment = "";
+            boolean inComment = false;
             for (String line : example.get().split("\\R")) {
                 String trimmed = line.trim();
                 if (trimmed.startsWith("#")) {
-                    comment = trimmed.replaceFirst("^#+\\s*", "");
+                    String text = trimmed.replaceFirst("^#+\\s*", "");
+                    comment = inComment && !comment.isEmpty() ? comment + " " + text : text;
+                    inComment = true;
+                    continue;
+                }
+                inComment = false;
+                if (trimmed.isEmpty()) {
+                    comment = "";
                     continue;
                 }
                 Matcher m = ENV_LINE.matcher(line);
                 if (m.matches() && !found.containsKey(m.group(1))) {
                     String value = unquote(m.group(2).replaceFirst("\\s+#.*$", ""));
                     found.put(m.group(1), classify(m.group(1), value, true, exampleName,
-                            comment.length() > 120 ? "" : comment));
+                            comment.length() > 200 || ENV_LINE.matcher(comment).matches() ? "" : comment));
                 }
-                comment = trimmed.isEmpty() ? "" : comment;
             }
             notes.add("Found " + exampleName + ".");
         }
 
-        // 3. The code itself: variables the app reads.
+        // 3. The code itself: variables the app reads. A variable listed in .env.example that the code only ever
+        //    reads with a default (process.env.X || 'y', ${X:}) is optional: the app starts without it.
+        Set<String> seenInCode = new java.util.HashSet<>();
+        Set<String> requiredInCode = new java.util.HashSet<>();
         int scanned = 0;
         for (String path : repo.paths()) {
             if (!path.startsWith(prefix) || scanned >= MAX_CODE_FILES || skipped(path)) {
@@ -291,10 +310,16 @@ public class EnvRequirementsService implements IEnvRequirementsService {
                     hasDefault = m.group(2) != null;
                 } else {
                     name = m.group(1) != null ? m.group(1) : m.group(2);
-                    hasDefault = m.group(1) == null; // os.environ["X"] crashes without it; os.getenv("X") doesn't
+                    // Only os.getenv("X", default) / environ.get("X", default) has a default: os.getenv("X") returns
+                    // None, which the app usually can't work with, so it still counts as needed.
+                    hasDefault = m.group(1) == null && m.group(3) != null;
                 }
                 if (name.startsWith("NODE_") && !name.equals("NODE_ENV") || name.startsWith("npm_")) {
                     continue;
+                }
+                seenInCode.add(name);
+                if (!hasDefault) {
+                    requiredInCode.add(name);
                 }
                 Needed existing = found.get(name);
                 if (existing == null) {
@@ -303,6 +328,13 @@ public class EnvRequirementsService implements IEnvRequirementsService {
                     found.put(name, new Needed(name, existing.kind(), true, existing.suggestedValue(), existing.source(),
                             existing.help()));
                 }
+            }
+        }
+        for (String name : seenInCode) {
+            Needed n = found.get(name);
+            if (n != null && n.required() && !requiredInCode.contains(name) && !"deployhub.json".equals(n.source())) {
+                found.put(name, new Needed(name, n.kind(), false, n.suggestedValue(), n.source(),
+                        join(n.help(), "Optional: the app has a default for it.")));
             }
         }
         if (found.isEmpty()) {
@@ -338,8 +370,8 @@ public class EnvRequirementsService implements IEnvRequirementsService {
         }
         if (EXTERNAL.matcher(upper).matches()) {
             return new Needed(name, EnvVarKind.EXTERNAL, required, null, source, join(comment,
-                    "A key from another service's account (e.g. your email, payment or cloud provider). Only you can get "
-                            + "it; DeployHub can't make it up."));
+                    "Comes from another service you use (e.g. your email, payment or cloud provider). Only you know it; "
+                            + "DeployHub can't make it up."));
         }
         if (GENERATABLE.matcher(upper).matches()) {
             return new Needed(name, EnvVarKind.SECRET, required, null, source,
@@ -376,7 +408,11 @@ public class EnvRequirementsService implements IEnvRequirementsService {
     }
 
     private static String join(String first, String second) {
-        return first == null || first.isBlank() ? second : first + ". " + second;
+        if (first == null || first.isBlank()) {
+            return second;
+        }
+        String trimmed = first.trim();
+        return trimmed + (trimmed.matches(".*[.!?:]$") ? " " : ". ") + second;
     }
 
     private static String generateSecret() {

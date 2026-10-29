@@ -439,8 +439,21 @@ public class DeploymentJobWorker {
                     p.getName(), p.getRepositoryUrl(), d.getCommitRef() != null ? d.getCommitRef() : p.getBranch(),
                     p.getAppType(), p.getBuildCommand(), p.getStartCommand(), ProjectMapper.effectivePort(p),
                     p.getHealthCheckPath(), d.getResolvedCommit(), d.getImageRef(), environment(p.getId()),
-                    p.getRootDirectory());
+                    p.getRootDirectory(), repositoryToken(p));
         }).orElse(null);
+    }
+
+    /** The project's access token for a private repository, decrypted; null for a public one. */
+    private String repositoryToken(ProjectMaster project) {
+        if (project.getRepoTokenEncrypted() == null) {
+            return null;
+        }
+        try {
+            return cipher.decrypt(project.getRepoTokenEncrypted());
+        } catch (IllegalStateException e) {
+            throw DeploymentStepException.permanent("The saved access token can't be read (was DEPLOYHUB_SECRETS_KEY "
+                    + "changed?). Paste the token again on the project's Edit page (Private repository), then deploy.");
+        }
     }
 
     /** The project's environment variables, decrypted (current values: changes apply to the next deployment). */

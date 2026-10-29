@@ -1,9 +1,11 @@
 package com.deployhub.platform.services.Implementations;
 
 import com.deployhub.platform.exceptions.ConflictException;
+import com.deployhub.platform.exceptions.FieldValidationException;
 import com.deployhub.platform.exceptions.ResourceNotFoundException;
 import com.deployhub.platform.exceptions.ServiceUnavailableException;
 import com.deployhub.platform.execution.ManagedDatabaseServer;
+import com.deployhub.platform.models.DTO.DatabaseImportResponseDTO;
 import com.deployhub.platform.models.DTO.DatabaseResponseDTO;
 import com.deployhub.platform.models.entities.DatabaseServer;
 import com.deployhub.platform.models.entities.ProjectDatabase;
@@ -15,6 +17,7 @@ import com.deployhub.platform.repositories.ProjectDatabaseRepository;
 import com.deployhub.platform.repositories.ProjectEnvVarRepository;
 import com.deployhub.platform.repositories.ProjectRepository;
 import com.deployhub.platform.security.SecretCipher;
+import com.deployhub.platform.utils.SqlDumpCleaner;
 import com.deployhub.platform.services.Interface.IAuditService;
 import com.deployhub.platform.services.Interface.ICurrentUserService;
 import com.deployhub.platform.services.Interface.IProjectDatabaseService;
@@ -62,6 +65,9 @@ public class ProjectDatabaseService implements IProjectDatabaseService {
     private final TransactionTemplate newTx;
     private final Clock clock;
     private final SecureRandom random = new SecureRandom();
+    /** Projects with an import or export running: one at a time each. */
+    private final java.util.Set<Long> transferring = java.util.concurrent.ConcurrentHashMap.newKeySet();
+    static final long MAX_IMPORT_BYTES = 50L * 1024 * 1024;
 
     public ProjectDatabaseService(ProjectRepository projects, ProjectDatabaseRepository databases,
                                   DatabaseServerRepository servers, ProjectEnvVarRepository envVars,
@@ -169,6 +175,123 @@ public class ProjectDatabaseService implements IProjectDatabaseService {
     }
 
     /** Runs work on the server with its admin password (created on first use), reporting Docker problems as 503. */
+    @Override
+    public DatabaseImportResponseDTO importData(Long projectId, java.io.InputStream sqlFile, boolean replace) {
+        ProjectDatabase database = ownedDatabase(projectId);
+        if (!transferring.add(projectId)) {
+            throw new ConflictException("An import or export of this database is already running. Try again when it's done.");
+        }
+        java.nio.file.Path cleaned = null;
+        try {
+            cleaned = java.nio.file.Files.createTempFile("deployhub-import-", ".sql");
+            SqlDumpCleaner.Result clean;
+            try (java.io.OutputStream out = java.nio.file.Files.newOutputStream(cleaned)) {
+                clean = SqlDumpCleaner.clean(sqlFile, out, MAX_IMPORT_BYTES);
+            } catch (SqlDumpCleaner.TooLarge e) {
+                throw new FieldValidationException("file", e.getMessage() + " Import a smaller export, or ask for help.");
+            }
+            if (clean.bytes() <= 1) {
+                throw new FieldValidationException("file", "The file is empty.");
+            }
+            int[] before = new int[1];
+            int[] after = new int[1];
+            java.nio.file.Path file = cleaned;
+            try {
+                onServer(a -> before[0] = server.countTables(a, database.getDatabaseName()));
+                if (before[0] > 0 && !replace) {
+                    throw new ConflictException("The database already has " + before[0] + " table"
+                            + (before[0] == 1 ? "" : "s") + ". Tick \"Delete the current data first\" to replace them, "
+                            + "or export a backup first.");
+                }
+                String userPassword = userPassword(projectId);
+                onServer(a -> {
+                    server.importSql(a, database.getDatabaseName(), database.getUsername(), userPassword, file, replace);
+                    after[0] = server.countTables(a, database.getDatabaseName());
+                });
+            } catch (ManagedDatabaseServer.SqlFailed e) {
+                if (isLoginRefused(e)) {
+                    throw passwordMismatch();
+                }
+                throw new FieldValidationException("file", "MySQL couldn't run the file: " + e.getMessage()
+                        + (replace ? " The database may now be partly filled; fix the file and import again with "
+                        + "\"Delete the current data first\"." : ""));
+            }
+            auditService.record(AuditEventType.DATABASE_IMPORTED, currentUserService.currentUserId(), null, null,
+                    "project #" + projectId + ": " + clean.bytes() + " bytes, " + after[0] + " tables"
+                            + (replace ? ", replaced" : ""));
+            StringBuilder message = new StringBuilder("Imported: the database now has " + after[0] + " table"
+                    + (after[0] == 1 ? "" : "s") + ".");
+            if (clean.removedStatements() + clean.removedDefiners() > 0) {
+                message.append(" DeployHub left out ").append(clean.removedStatements() + clean.removedDefiners())
+                        .append(" line(s) that only work on the computer the file came from (switching database, "
+                                + "DEFINER, server settings).");
+            }
+            return new DatabaseImportResponseDTO(before[0], after[0], message.toString());
+        } catch (java.io.IOException e) {
+            throw new ServiceUnavailableException("Could not read the uploaded file: " + e.getMessage(), e);
+        } finally {
+            transferring.remove(projectId);
+            if (cleaned != null) {
+                cleaned.toFile().delete();
+            }
+        }
+    }
+
+    @Override
+    public java.nio.file.Path exportData(Long projectId) {
+        ProjectDatabase database = ownedDatabase(projectId);
+        if (!transferring.add(projectId)) {
+            throw new ConflictException("An import or export of this database is already running. Try again when it's done.");
+        }
+        try {
+            java.nio.file.Path target = java.nio.file.Files.createTempFile("deployhub-export-", ".sql");
+            try {
+                String userPassword = userPassword(projectId);
+                onServer(a -> server.exportSql(database.getDatabaseName(), database.getUsername(), userPassword, target));
+            } catch (ManagedDatabaseServer.SqlFailed e) {
+                target.toFile().delete();
+                throw isLoginRefused(e) ? passwordMismatch() : new ServiceUnavailableException(e.getMessage(), e);
+            } catch (RuntimeException e) {
+                target.toFile().delete();
+                throw e;
+            }
+            auditService.record(AuditEventType.DATABASE_EXPORTED, currentUserService.currentUserId(), null, null,
+                    "project #" + projectId);
+            return target;
+        } catch (java.io.IOException e) {
+            throw new ServiceUnavailableException("Could not prepare the export file: " + e.getMessage(), e);
+        } finally {
+            transferring.remove(projectId);
+        }
+    }
+
+    @Override
+    public String exportFileName(Long projectId) {
+        return ownedDatabase(projectId).getDatabaseName() + "-" + java.time.LocalDate.now(clock) + ".sql";
+    }
+
+    /** The database user's password, from the project's DB_PASSWORD (set when the database was added or reset). */
+    private String userPassword(Long projectId) {
+        return envVars.findByProjectIdAndName(projectId, "DB_PASSWORD")
+                .map(v -> cipher.decrypt(v.getValueEncrypted()))
+                .orElseThrow(() -> new ConflictException("The project's DB_PASSWORD variable is missing. Use Reset password "
+                        + "on the Database card (it sets it again), then try once more."));
+    }
+
+    private static boolean isLoginRefused(ManagedDatabaseServer.SqlFailed e) {
+        return String.valueOf(e.getMessage()).contains("ERROR 1045");
+    }
+
+    private static ConflictException passwordMismatch() {
+        return new ConflictException("The project's DB_PASSWORD no longer matches the database. Use Reset password on "
+                + "the Database card, then try again (and redeploy, so the app uses the new password).");
+    }
+
+    private ProjectDatabase ownedDatabase(Long projectId) {
+        owned(projectId);
+        return databases.findByProjectId(projectId).orElseThrow(() -> noDatabase(projectId));
+    }
+
     private void onServer(java.util.function.Consumer<String> work) {
         String admin = adminPassword();
         try {

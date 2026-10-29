@@ -17,8 +17,10 @@ import com.deployhub.platform.repositories.ProjectRouteRepository;
 import com.deployhub.platform.models.enums.ApplicationType;
 import com.deployhub.platform.models.enums.DeploymentStatus;
 import com.deployhub.platform.repositories.DeploymentLogRepository;
+import com.deployhub.platform.repositories.DeploymentJobRepository;
 import com.deployhub.platform.repositories.DeploymentRepository;
 import com.deployhub.platform.repositories.ProjectRepository;
+import com.deployhub.platform.security.SecretCipher;
 import com.deployhub.platform.models.enums.AuditEventType;
 import com.deployhub.platform.services.Interface.IAuditService;
 import com.deployhub.platform.services.Interface.ICurrentUserService;
@@ -55,6 +57,8 @@ public class ProjectService implements IProjectService {
     private final ProjectGateways gateways;
     private final ProjectDatabaseRepository projectDatabaseRepository;
     private final IProjectDatabaseService databaseService;
+    private final SecretCipher cipher;
+    private final DeploymentJobRepository jobRepository;
     private final Clock clock;
 
     @Override
@@ -86,6 +90,7 @@ public class ProjectService implements IProjectService {
         Instant now = clock.instant();
         project.setCreatedAt(now);
         project.setUpdatedAt(now);
+        saveToken(project, request.repositoryToken(), ownerId);
         // The unique (owner_id, name) constraint is the real guard against a race between two creates.
         projectRepository.saveAndFlush(project);
         auditService.record(AuditEventType.PROJECT_CREATED, ownerId, null, null, "project #" + project.getId());
@@ -99,11 +104,48 @@ public class ProjectService implements IProjectService {
         if (projectRepository.existsByOwnerIdAndNameAndIdNot(project.getOwner().getId(), request.name(), id)) {
             throw new ConflictException("A project named '" + request.name() + "' already exists");
         }
+        if (project.getRepoTokenEncrypted() != null && !project.getRepositoryUrl().equals(request.repositoryUrl().trim())
+                && request.repositoryToken() == null) {
+            // A token belongs to one repository: it is never sent to a different one.
+            project.setRepoTokenEncrypted(null);
+            project.setRepoTokenUpdatedAt(null);
+            auditService.record(AuditEventType.REPO_TOKEN_REMOVED, project.getOwner().getId(), null, null,
+                    "project #" + id + ": repository URL changed");
+        }
         ProjectMapper.apply(request, project);
         project.setUpdatedAt(clock.instant());
+        saveToken(project, request.repositoryToken(), project.getOwner().getId());
         projectRepository.saveAndFlush(project);
         auditService.record(AuditEventType.PROJECT_UPDATED, project.getOwner().getId(), null, null, "project #" + id);
         return ProjectMapper.toResponse(project);
+    }
+
+    @Override
+    @Transactional
+    public ProjectResponseDTO removeRepositoryToken(Long id) {
+        ProjectMaster project = findOwned(id);
+        if (project.getRepoTokenEncrypted() != null) {
+            project.setRepoTokenEncrypted(null);
+            project.setRepoTokenUpdatedAt(null);
+            project.setUpdatedAt(clock.instant());
+            projectRepository.saveAndFlush(project);
+            auditService.record(AuditEventType.REPO_TOKEN_REMOVED, project.getOwner().getId(), null, null, "project #" + id);
+        }
+        return ProjectMapper.toResponse(project);
+    }
+
+    /** Stores a newly given access token encrypted (null = keep what is saved). The caller already checked it works. */
+    private void saveToken(ProjectMaster project, String token, Long userId) {
+        if (token == null) {
+            return;
+        }
+        if (!cipher.isConfigured()) {
+            throw new ConflictException("Access tokens need an encryption key. Set DEPLOYHUB_SECRETS_KEY "
+                    + "(openssl rand -base64 32) in deployhub-backend/.env and restart the backend.");
+        }
+        project.setRepoTokenEncrypted(cipher.encrypt(token));
+        project.setRepoTokenUpdatedAt(clock.instant());
+        auditService.record(AuditEventType.REPO_TOKEN_SET, userId, null, null, "project " + project.getName());
     }
 
     @Override
@@ -113,6 +155,9 @@ public class ProjectService implements IProjectService {
         if (deploymentRepository.existsByProjectIdAndStatusIn(id,
                 EnumSet.of(DeploymentStatus.QUEUED, DeploymentStatus.BUILDING, DeploymentStatus.STARTING))) {
             throw new ConflictException("Cancel the project's in-progress deployments before deleting it");
+        }
+        if (jobRepository.anyRunningForProject(id)) {
+            throw new ConflictException("A deployment of this project is still finishing. Try again in a few seconds.");
         }
         List<String> running = deploymentRepository.findLiveContainerNames(id);
         Optional<ProjectDatabase> database = projectDatabaseRepository.findByProjectId(id);

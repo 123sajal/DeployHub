@@ -1,9 +1,12 @@
 package com.deployhub.platform.services.Implementations;
 
+import com.deployhub.platform.assistant.EmailProofs;
 import com.deployhub.platform.exceptions.ConflictException;
+import com.deployhub.platform.exceptions.ServiceUnavailableException;
 import com.deployhub.platform.exceptions.FieldValidationException;
 import com.deployhub.platform.models.DTO.CurrentUserResponseDTO;
 import com.deployhub.platform.models.DTO.LoginRequestDTO;
+import com.deployhub.platform.models.DTO.ProfileUpdateRequestDTO;
 import com.deployhub.platform.models.DTO.RegisterRequestDTO;
 import com.deployhub.platform.models.entities.UserMaster;
 import com.deployhub.platform.models.enums.AccountStatus;
@@ -18,6 +21,7 @@ import com.deployhub.platform.services.Interface.IAuthService;
 import com.deployhub.platform.utils.PasswordValidator;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -30,13 +34,16 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.authentication.session.SessionAuthenticationStrategy;
 import org.springframework.security.web.context.SecurityContextRepository;
 import org.springframework.security.web.csrf.CsrfToken;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionException;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
 import java.time.Instant;
 
+@Slf4j
 @Service
 public class AuthService implements IAuthService {
 
@@ -50,13 +57,14 @@ public class AuthService implements IAuthService {
     private final SecurityCurrentUserService currentUserService;
     private final TransactionTemplate transactionTemplate;
     private final Clock clock;
+    private final EmailProofs emailProofs;
 
     public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder,
                        AuthenticationManager authenticationManager,
                        SessionAuthenticationStrategy sessionAuthenticationStrategy,
                        SecurityContextRepository securityContextRepository, LoginThrottleService throttle,
                        IAuditService auditService, SecurityCurrentUserService currentUserService,
-                       PlatformTransactionManager transactionManager, Clock clock) {
+                       PlatformTransactionManager transactionManager, Clock clock, EmailProofs emailProofs) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.authenticationManager = authenticationManager;
@@ -67,6 +75,7 @@ public class AuthService implements IAuthService {
         this.currentUserService = currentUserService;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.clock = clock;
+        this.emailProofs = emailProofs;
     }
 
     @Override
@@ -76,6 +85,11 @@ public class AuthService implements IAuthService {
         throttle.checkRegistration(ip);
         if (request.password().trim().equalsIgnoreCase(request.email())) {
             throw new FieldValidationException("password", "must not be the same as your email");
+        }
+        boolean emailProven = request.emailProof() != null && !request.emailProof().isBlank();
+        if (emailProven && !emailProofs.isValid(request.emailProof(), request.email())) {
+            throw new FieldValidationException("emailProof",
+                    "The email check has expired. Ask for a new code to confirm your email.");
         }
         // Without email verification, telling the user "already registered" is unavoidable here;
         // registrations are rate-limited per IP to make bulk probing expensive.
@@ -95,18 +109,26 @@ public class AuthService implements IAuthService {
                 created.setCreatedAt(now);
                 created.setUpdatedAt(now);
                 created.setLastLoginAt(now);
+                created.setOccupation(request.occupation());
+                created.setEmailVerifiedAt(emailProven ? now : null);
                 userRepository.saveAndFlush(created);
                 auditService.record(AuditEventType.REGISTERED, created.getId(), created.getEmail(), ip, null);
                 return created;
             });
         } catch (DataIntegrityViolationException e) {
-            throw new ConflictException("An account with this email already exists"); // lost a race with a twin request
+            // Lost a race with a twin request for the same email. Anything else (e.g. a constraint the database
+            // rejects) is a real error: report it as one, not as "already exists", which would hide it.
+            if (userRepository.findByEmail(request.email()).isPresent()) {
+                throw new ConflictException("An account with this email already exists");
+            }
+            log.error("Sign-up failed in the database for a new email", e);
+            throw new ServiceUnavailableException("Signing up failed because of a database problem. Please try again.", e);
         }
 
         AuthenticatedUser principal = new AuthenticatedUser(user.getId(), user.getEmail(), user.getDisplayName(), null);
         startSession(UsernamePasswordAuthenticationToken.authenticated(principal, null, principal.getAuthorities()),
                 httpRequest, httpResponse);
-        return toResponse(principal);
+        return toResponse(user);
     }
 
     @Override
@@ -132,16 +154,39 @@ public class AuthService implements IAuthService {
 
         AuthenticatedUser principal = (AuthenticatedUser) authentication.getPrincipal();
         startSession(authentication, httpRequest, httpResponse);
-        transactionTemplate.executeWithoutResult(status -> {
-            userRepository.findById(principal.getId()).ifPresent(user -> user.setLastLoginAt(clock.instant()));
+        UserMaster user = transactionTemplate.execute(status -> {
             auditService.record(AuditEventType.LOGIN_SUCCEEDED, principal.getId(), principal.getEmail(), ip, null);
+            return userRepository.findById(principal.getId()).map(found -> {
+                found.setLastLoginAt(clock.instant());
+                return found;
+            }).orElseThrow();
         });
-        return toResponse(principal);
+        return toResponse(user);
     }
 
     @Override
     public CurrentUserResponseDTO currentUser() {
-        return toResponse(currentUserService.currentUser());
+        AuthenticatedUser principal = currentUserService.currentUser();
+        try {
+            return toResponse(userRepository.findById(principal.getId()).orElseThrow());
+        } catch (DataAccessException | TransactionException e) {
+            // The session lives in server memory, so "who am I" keeps working while the database is down; only the
+            // profile details (student status etc.) are missing until it is back.
+            log.warn("Database unavailable for /me, answering from the session: {}", e.getMessage());
+            return new CurrentUserResponseDTO(principal.getId(), principal.getEmail(), principal.getDisplayName(),
+                    null, false, null, null);
+        }
+    }
+
+    @Override
+    public CurrentUserResponseDTO updateProfile(ProfileUpdateRequestDTO request) {
+        UserMaster user = transactionTemplate.execute(status -> {
+            UserMaster found = userRepository.findById(currentUserService.currentUserId()).orElseThrow();
+            found.setOccupation(request.occupation());
+            found.setUpdatedAt(clock.instant());
+            return found;
+        });
+        return toResponse(user);
     }
 
     /**
@@ -160,7 +205,8 @@ public class AuthService implements IAuthService {
         }
     }
 
-    private static CurrentUserResponseDTO toResponse(AuthenticatedUser user) {
-        return new CurrentUserResponseDTO(user.getId(), user.getEmail(), user.getDisplayName());
+    private static CurrentUserResponseDTO toResponse(UserMaster user) {
+        return new CurrentUserResponseDTO(user.getId(), user.getEmail(), user.getDisplayName(), user.getOccupation(),
+                user.getEmailVerifiedAt() != null, user.getStudentVerifiedUntil(), user.getStudentVerifiedBy());
     }
 }

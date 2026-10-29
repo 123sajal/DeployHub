@@ -94,7 +94,7 @@ abstract class PersistenceAcrossRestartTestBase {
             actAs(user);
 
             projectId = first.getBean(IProjectService.class).create(new ProjectRequestDTO(name,
-                    "https://github.com/acme/" + name, "main", ApplicationType.NODE_JS, null, "npm ci", "node server.js", null, null)).id();
+                    "https://github.com/acme/" + name, "main", ApplicationType.NODE_JS, null, null, "npm ci", "node server.js", null, null)).id();
             DeploymentJobWorker worker = first.getBean(DeploymentJobWorker.class);
             worker.runAvailableJobs(1_000); // empty the queue (the database may be shared with other tests)
             deploymentId = first.getBean(IDeploymentService.class).create(projectId, null, "restart-key").deployment().id();

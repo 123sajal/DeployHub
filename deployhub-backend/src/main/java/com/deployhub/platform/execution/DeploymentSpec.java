@@ -15,19 +15,28 @@ import java.util.Map;
  * @param imageRef       set once the BUILDING step has built the image
  * @param environment    decrypted environment variables for the app (runtime only); never log this record
  * @param rootDirectory  folder inside the repository that holds the app; null = the repository root
+ * @param repositoryToken decrypted access token for a private repository (null = public); never log this record
  */
 public record DeploymentSpec(Long deploymentId, DeploymentStatus status, ExecutionMode mode, int attempt,
                              Long projectId, String projectName, String repositoryUrl, String ref,
                              ApplicationType appType, String buildCommand, String startCommand, int appPort,
                              String healthCheckPath, String resolvedCommit, String imageRef,
-                             Map<String, String> environment, String rootDirectory) {
+                             Map<String, String> environment, String rootDirectory, String repositoryToken) {
+
+    public DeploymentSpec(Long deploymentId, DeploymentStatus status, ExecutionMode mode, int attempt, Long projectId,
+                          String projectName, String repositoryUrl, String ref, ApplicationType appType,
+                          String buildCommand, String startCommand, int appPort, String healthCheckPath,
+                          String resolvedCommit, String imageRef, Map<String, String> environment, String rootDirectory) {
+        this(deploymentId, status, mode, attempt, projectId, projectName, repositoryUrl, ref, appType, buildCommand,
+                startCommand, appPort, healthCheckPath, resolvedCommit, imageRef, environment, rootDirectory, null);
+    }
 
     public DeploymentSpec(Long deploymentId, DeploymentStatus status, ExecutionMode mode, int attempt, Long projectId,
                           String projectName, String repositoryUrl, String ref, ApplicationType appType,
                           String buildCommand, String startCommand, int appPort, String healthCheckPath,
                           String resolvedCommit, String imageRef, Map<String, String> environment) {
         this(deploymentId, status, mode, attempt, projectId, projectName, repositoryUrl, ref, appType, buildCommand,
-                startCommand, appPort, healthCheckPath, resolvedCommit, imageRef, environment, null);
+                startCommand, appPort, healthCheckPath, resolvedCommit, imageRef, environment, null, null);
     }
 
     public DeploymentSpec(Long deploymentId, DeploymentStatus status, ExecutionMode mode, int attempt, Long projectId,
@@ -41,6 +50,6 @@ public record DeploymentSpec(Long deploymentId, DeploymentStatus status, Executi
     @Override
     public String toString() {
         return "DeploymentSpec[deployment=" + deploymentId + ", status=" + status + ", environment="
-                + environment.keySet() + " (values hidden)]";
+                + environment.keySet() + " (values hidden), repositoryToken=" + (repositoryToken == null ? "none" : "***") + "]";
     }
 }

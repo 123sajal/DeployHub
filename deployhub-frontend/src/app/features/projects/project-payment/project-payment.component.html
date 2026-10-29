@@ -20,11 +20,18 @@
                 Free: this is one of your free projects
               } @else {
                 <strong>{{ price() }}</strong> for one deploy
+                @if (b.verifiedStudent) {
+                  <span class="dh-muted">(student price)</span>
+                }
               }
             </dd>
             <dt>Paid deploys left</dt>
             <dd>{{ b.credits }}</dd>
           </dl>
+
+          @if (paymentError(); as message) {
+            <app-assistant-hint topic="PAYMENT_FAILED" [projectId]="p.id" [errorText]="message" [auto]="true" />
+          }
 
           @if (p.free || !b.enabled) {
             <p class="dh-muted">This deploy costs nothing.</p>

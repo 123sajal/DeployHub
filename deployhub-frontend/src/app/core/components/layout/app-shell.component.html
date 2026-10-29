@@ -1,8 +1,8 @@
-<div class="shell" [class.open]="sidebarOpen()">
+<div class="shell dh-3d" [class.open]="sidebarOpen()">
+  <app-auth-backdrop [calm]="true" />
   <aside class="sidebar" id="sidebar" aria-label="Main navigation">
     <a class="brand" routerLink="/">
-      <span class="logo" aria-hidden="true"><i class="pi pi-bolt"></i></span>
-      DeployHub
+      <app-logo />
     </a>
     <nav>
       @for (item of nav; track item.link) {
@@ -53,6 +53,7 @@
           <span><strong>Local preview:</strong> apps are built and run in Docker on this machine (localhost only).</span>
         }
       </div>
+      <app-theme-toggle />
       @if (user(); as u) {
         <div class="user">
           <span class="avatar" aria-hidden="true">{{ initials() }}</span>
@@ -69,5 +70,6 @@
     <main class="content">
       <router-outlet />
     </main>
+    <app-assistant-chat />
   </div>
 </div>

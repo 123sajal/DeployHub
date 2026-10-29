@@ -2,7 +2,7 @@ package com.deployhub.platform.controllers;
 
 import com.deployhub.platform.repositories.ProjectEnvVarRepository;
 import com.deployhub.platform.security.SecretCipher;
-import com.deployhub.platform.services.Interface.IRepositoryFiles;
+import com.deployhub.platform.support.FakeRepositoryFiles;
 import com.deployhub.platform.support.IntegrationTestSupport;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,10 +13,6 @@ import org.springframework.context.annotation.Import;
 import org.springframework.context.annotation.Primary;
 import org.springframework.http.MediaType;
 
-import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.hamcrest.Matchers.hasItems;
@@ -31,17 +27,17 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @Import(EnvRequirementsIntegrationTest.FakeRepositoryConfig.class)
 class EnvRequirementsIntegrationTest extends IntegrationTestSupport {
 
-    static final Map<String, String> FILES = new ConcurrentHashMap<>();
 
     @Autowired ProjectEnvVarRepository envVars;
+    @Autowired FakeRepositoryFiles repo;
     @Autowired SecretCipher cipher;
 
     private long projectId;
 
     @BeforeEach
     void employeeManagementBackend() throws Exception {
-        FILES.clear();
-        FILES.put("backend/.env.example", """
+        repo.reset();
+        repo.files.put("backend/.env.example", """
                 PORT=5000
                 DB_HOST=localhost
                 DB_USER=root
@@ -119,22 +115,8 @@ class EnvRequirementsIntegrationTest extends IntegrationTestSupport {
 
         @Bean
         @Primary
-        IRepositoryFiles fakeRepositoryFiles() {
-            return (url, branch, smallFiles) -> new IRepositoryFiles.Snapshot() {
-                @Override
-                public Set<String> paths() {
-                    return FILES.keySet();
-                }
-
-                @Override
-                public Optional<String> read(String path) {
-                    return Optional.ofNullable(FILES.get(path));
-                }
-
-                @Override
-                public void close() {
-                }
-            };
+        FakeRepositoryFiles fakeRepositoryFiles() {
+            return new FakeRepositoryFiles();
         }
     }
 }

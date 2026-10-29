@@ -3,6 +3,7 @@ package com.deployhub.platform.controllers;
 import com.deployhub.platform.models.DTO.CurrentUserResponseDTO;
 import com.deployhub.platform.models.DTO.ForgotPasswordRequestDTO;
 import com.deployhub.platform.models.DTO.LoginRequestDTO;
+import com.deployhub.platform.models.DTO.ProfileUpdateRequestDTO;
 import com.deployhub.platform.models.DTO.RegisterRequestDTO;
 import com.deployhub.platform.models.DTO.ResetPasswordRequestDTO;
 import com.deployhub.platform.security.ClientIpResolver;
@@ -14,6 +15,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -69,5 +71,10 @@ public class AuthController {
     @GetMapping("/me")
     public CurrentUserResponseDTO me() {
         return authService.currentUser();
+    }
+
+    @PatchMapping("/me")
+    public CurrentUserResponseDTO updateMe(@Valid @RequestBody ProfileUpdateRequestDTO request) {
+        return authService.updateProfile(request);
     }
 }

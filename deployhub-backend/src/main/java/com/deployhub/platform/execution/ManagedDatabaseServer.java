@@ -22,4 +22,27 @@ public interface ManagedDatabaseServer {
 
     /** Deletes the database with all its data, and its user. */
     void dropDatabase(String adminPassword, String databaseName, String username);
+
+    /** How many tables the database has. */
+    int countTables(String adminPassword, String databaseName);
+
+    /**
+     * Runs a SQL file in the database as the project's own user, which can use only that database (so the file can't
+     * touch anything else) and becomes the owner of the views and triggers it creates (so they keep working).
+     *
+     * @param replace empty the database first (as admin; the project's user keeps its rights)
+     * @throws SqlFailed with MySQL's message when the file doesn't run
+     */
+    void importSql(String adminPassword, String databaseName, String username, String userPassword,
+                   java.nio.file.Path sqlFile, boolean replace);
+
+    /** Writes the whole database (tables, data, views, triggers) to {@code target} as a SQL file, as the project's user. */
+    void exportSql(String databaseName, String username, String userPassword, java.nio.file.Path target);
+
+    /** The SQL itself failed (a mistake in the file, not a broken server). */
+    class SqlFailed extends RuntimeException {
+        public SqlFailed(String message) {
+            super(message);
+        }
+    }
 }

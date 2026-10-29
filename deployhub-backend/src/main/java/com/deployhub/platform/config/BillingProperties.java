@@ -13,11 +13,17 @@ import java.time.Duration;
  * @param freeProjects   how many projects per user are free (redeploys included), e.g. 2 for a backend + frontend
  * @param pricePerDeploy in the currency's smallest unit (paise for INR: 4900 = ₹49)
  * @param currency       ISO code, e.g. INR
+ * @param studentDiscount taken off pricePerDeploy for verified students, same unit (500 = ₹5)
  * @param razorpay       API keys and address; paid deploys are refused until the keys are set
  */
 @ConfigurationProperties(prefix = "deployhub.billing")
 public record BillingProperties(boolean enabled, int freeProjects, long pricePerDeploy, String currency,
-                                Razorpay razorpay) {
+                                long studentDiscount, Razorpay razorpay) {
+
+    /** What one deploy costs this user: verified students get studentDiscount off (never below ₹1). */
+    public long priceFor(boolean verifiedStudent) {
+        return verifiedStudent ? Math.min(pricePerDeploy, Math.max(100, pricePerDeploy - studentDiscount)) : pricePerDeploy;
+    }
 
     /**
      * @param keyId     rzp_test_... (test mode, no real money) or rzp_live_...

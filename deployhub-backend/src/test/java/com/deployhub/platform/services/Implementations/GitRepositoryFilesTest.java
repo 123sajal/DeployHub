@@ -65,6 +65,16 @@ class GitRepositoryFilesTest {
                 .isInstanceOf(IRepositoryFiles.RepositoryNotReadable.class);
     }
 
+    /** Review #7: a branch only "exists" if exactly that branch exists (not feature/<name>). */
+    @Test
+    void theBranchCheckIsExact() throws Exception {
+        files.checkAccess("file://" + origin, "main", null); // exists
+        git(origin, "branch", "feature/release");
+        assertThatThrownBy(() -> files.checkAccess("file://" + origin, "release", null))
+                .isInstanceOf(IRepositoryFiles.RepositoryNotReadable.class)
+                .hasMessageContaining("branch 'release' doesn't exist");
+    }
+
     private static void git(Path dir, String... args) throws Exception {
         List<String> command = new java.util.ArrayList<>(List.of("git"));
         command.addAll(List.of(args));

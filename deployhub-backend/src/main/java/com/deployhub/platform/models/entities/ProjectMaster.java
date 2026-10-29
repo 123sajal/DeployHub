@@ -58,6 +58,13 @@ public class ProjectMaster {
     @Column(name = "app_port")
     private Integer appPort;
 
+    /** Read-only access token for a private repository, encrypted (SecretCipher). Null = public repository. */
+    @Column(name = "repo_token_encrypted", length = 2000)
+    private String repoTokenEncrypted;
+
+    @Column(name = "repo_token_updated_at")
+    private Instant repoTokenUpdatedAt;
+
     /** Folder inside the repository that holds the app (e.g. "backend"); commands run there. Null = repository root. */
     @Column(name = "root_directory", length = 200)
     private String rootDirectory;

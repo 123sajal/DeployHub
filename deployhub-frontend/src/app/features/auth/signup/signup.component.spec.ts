@@ -57,6 +57,14 @@ describe('SignupComponent', () => {
     await fixture.whenStable();
   }
 
+  it('allows only letters and spaces in the name', async () => {
+    const fixture = await render();
+    fill(fixture.nativeElement, { ...VALID, displayName: 'Bob123' });
+    await submit(fixture);
+    expect(auth.register).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain('Use only letters and spaces');
+  });
+
   it('requires matching passwords', async () => {
     const fixture = await render();
     fill(fixture.nativeElement, { ...VALID, confirmPassword: 'something-else-1' });

@@ -1,0 +1,47 @@
+@if (open()) {
+  <section class="panel" role="dialog" aria-label="DeployHub assistant">
+    <header>
+      <app-assistant-avatar [size]="32" />
+      <div class="title">
+        <strong>DeployHub assistant</strong>
+        <small>Answers can be wrong; check before changing things.</small>
+      </div>
+      <button type="button" class="icon" (click)="toggle()" aria-label="Close the assistant">
+        <i class="pi pi-times" aria-hidden="true"></i>
+      </button>
+    </header>
+    <div class="messages" #list aria-live="polite">
+      @for (m of messages(); track $index) {
+        <div class="msg" [class.user]="m.role === 'USER'" [class.error]="m.error">
+          @if (m.notice) {
+            <small class="notice">{{ m.notice }}</small>
+          }
+          <p>{{ m.text }}</p>
+        </div>
+      }
+      @if (sending()) {
+        <div class="msg typing" aria-label="The assistant is typing"><span></span><span></span><span></span></div>
+      }
+    </div>
+    <form (ngSubmit)="send()">
+      <label for="assistant-question" class="sr-only">Your question</label>
+      <textarea id="assistant-question" name="question" rows="1" [(ngModel)]="question" maxlength="2000"
+                placeholder="Ask a question..." (keydown)="onKeydown($event)"></textarea>
+      <button type="submit" class="send" [disabled]="sending() || !question.trim()" aria-label="Send">
+        <i class="pi pi-send" aria-hidden="true"></i>
+      </button>
+    </form>
+    <p class="privacy">Don't paste passwords or keys here.</p>
+  </section>
+}
+<button type="button" class="launcher" (click)="toggle()" [attr.aria-expanded]="open()"
+        [attr.aria-label]="open() ? 'Close the assistant' : 'Ask the assistant'">
+  @if (open()) {
+    <i class="pi pi-times" aria-hidden="true"></i>
+  } @else {
+    <app-assistant-avatar [size]="24" variant="light" />
+  }
+  @if (!open()) {
+    <span>Ask the assistant</span>
+  }
+</button>

@@ -7,10 +7,11 @@ import { TagModule } from 'primeng/tag';
 import { ApiError, Health } from '../../core/models/api.models';
 import { PlatformApiService } from '../../core/services/api/platform-api.service';
 import { AuthService } from '../../core/services/auth/auth.service';
+import { StudentDiscountComponent } from './student-discount.component';
 
 @Component({
   selector: 'app-settings',
-  imports: [DatePipe, ButtonModule, InputTextModule, TagModule],
+  imports: [DatePipe, ButtonModule, InputTextModule, TagModule, StudentDiscountComponent],
   templateUrl: './settings.component.html',
   styles: `
     .head p { margin: 0.25rem 0 0; }

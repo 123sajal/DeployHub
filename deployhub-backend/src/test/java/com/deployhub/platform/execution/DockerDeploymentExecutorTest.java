@@ -141,7 +141,7 @@ class DockerDeploymentExecutorTest {
                 .containsEntry("GIT_CONFIG_GLOBAL", "/dev/null");
         List<String> build = runner.commandsContaining("--progress=plain").getFirst();
         assertThat(build).containsSubsequence("docker", "build", "-t", result.imageRef(), "-f");
-        assertThat(dockerfile.get()).contains("FROM node:22-alpine").contains("RUN npm ci")
+        assertThat(dockerfile.get()).contains("FROM node:22-alpine").contains("RUN (npm ci || npm install)")
                 .contains("CMD [\"sh\",\"-c\",\"npm start\"]");
         assertThat(loggedMessages()).anyMatch(m -> m.contains("Fetched commit " + SHA))
                 .anyMatch(m -> m.contains("Image built"));
@@ -247,7 +247,7 @@ class DockerDeploymentExecutorTest {
 
         DeploymentExecutor.BuildResult result = executor().build(inFolder(plain, "backend"), context);
 
-        assertThat(dockerfile.get()).containsSubsequence("COPY --chown=", "WORKDIR /app/backend\n", "RUN npm ci",
+        assertThat(dockerfile.get()).containsSubsequence("COPY --chown=", "WORKDIR /app/backend\n", "RUN (npm ci || npm install)",
                 "CMD [\"sh\",\"-c\",\"npm start\"]");
         List<String> build = runner.commandsContaining("--progress=plain").getFirst();
         assertThat(build.getLast()).doesNotEndWith("backend");
@@ -299,6 +299,10 @@ class DockerDeploymentExecutorTest {
         assertThat(DockerDeploymentExecutor.hint("npm error The `npm ci` command can only install with an existing "
                 + "package-lock.json or npm-shrinkwrap.json")).contains("use npm install instead of npm ci");
         assertThat(DockerDeploymentExecutor.hint("npm error code ERESOLVE")).isEmpty();
+        assertThat(DockerDeploymentExecutor.hint("npm error code EUSAGE")).as("any other npm usage error").isEmpty();
+        assertThat(DockerDeploymentExecutor.hint("npm error `npm ci` can only install packages when your package.json and "
+                + "package-lock.json are in sync")).contains("DeployHub ran npm install instead")
+                .contains("the real error is in the output after npm install");
     }
 
     @Test
@@ -314,6 +318,39 @@ class DockerDeploymentExecutorTest {
         assertThat(DockerDeploymentExecutor.missingVariableHint(List.of("Error: DB_HOST is not set"), Set.of("DB_HOST")))
                 .as("already set: not the problem").isEmpty();
         assertThat(DockerDeploymentExecutor.missingVariableHint(List.of("Listening on port 3000"), Set.of())).isEmpty();
+    }
+
+    @Test
+    void aPrivateRepositoryIsFetchedWithTheTokenInTheEnvironmentNeverOnTheCommandLine() {
+        DeploymentSpec base = spec(ApplicationType.NODE_JS, "main", "npm start", null);
+        DeploymentSpec privateSpec = new DeploymentSpec(base.deploymentId(), base.status(), base.mode(), base.attempt(),
+                base.projectId(), base.projectName(), base.repositoryUrl(), base.ref(), base.appType(), base.buildCommand(),
+                base.startCommand(), base.appPort(), base.healthCheckPath(), null, null, Map.of(), null, "github_pat_SECRET123");
+
+        executor().build(privateSpec, context);
+
+        FakeRunner.Call fetch = runner.calls.stream().filter(c -> c.command().contains("fetch")).findFirst().orElseThrow();
+        assertThat(String.join(" ", fetch.command())).doesNotContain("github_pat_SECRET123");
+        assertThat(fetch.env()).containsEntry("GIT_CONFIG_COUNT", "1")
+                .containsEntry("GIT_CONFIG_KEY_0", "http.https://github.com/.extraheader");
+        assertThat(fetch.env().get("GIT_CONFIG_VALUE_0")).startsWith("Authorization: Basic ").doesNotContain("SECRET123");
+        assertThat(loggedMessages()).noneMatch(m -> m.contains("SECRET123")).anyMatch(m -> m.contains("private repository"));
+        assertThat(privateSpec.toString()).doesNotContain("SECRET123");
+    }
+
+    @Test
+    void aTokenThatNoLongerWorksSaysSo() {
+        runner.on(has("fetch"), 128, "remote: Repository not found.", "fatal: repository 'https://github.com/acme/shop/' not found");
+        DeploymentSpec base = spec(ApplicationType.NODE_JS, "main", "npm start", null);
+        DeploymentSpec privateSpec = new DeploymentSpec(base.deploymentId(), base.status(), base.mode(), base.attempt(),
+                base.projectId(), base.projectName(), base.repositoryUrl(), base.ref(), base.appType(), base.buildCommand(),
+                base.startCommand(), base.appPort(), base.healthCheckPath(), null, null, Map.of(), null, "github_pat_OLD");
+
+        assertThatThrownBy(() -> executor().build(privateSpec, context))
+                .isInstanceOfSatisfying(DeploymentStepException.class, e -> {
+                    assertThat(e.isRetryable()).isFalse();
+                    assertThat(e.getMessage()).contains("access token doesn't work");
+                });
     }
 
     @Test
@@ -354,8 +391,8 @@ class DockerDeploymentExecutorTest {
 
         assertThatThrownBy(() -> executor().build(spec(ApplicationType.NODE_JS, "main", "npm start", null), context))
                 .isInstanceOf(DeploymentStepException.class)
-                .hasMessage("The build failed (exit code 1): npm error `npm ci` can only install packages when your "
-                        + "package.json and package-lock.json are in sync.");
+                .hasMessageStartingWith("The build failed (exit code 1): npm error `npm ci` can only install packages "
+                        + "when your package.json and package-lock.json are in sync. npm ci refused because");
     }
 
     // ---------------------------------------------------------------- start

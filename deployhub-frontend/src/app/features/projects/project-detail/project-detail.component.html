@@ -53,6 +53,14 @@
             </dd>
             <dt>Branch</dt>
             <dd class="mono">{{ p.branch }}</dd>
+            <dt>Repository</dt>
+            <dd>
+              @if (p.privateRepository) {
+                <i class="pi pi-lock" aria-hidden="true"></i> Private (access token saved)
+              } @else {
+                Public
+              }
+            </dd>
             <dt>App folder</dt>
             <dd class="mono">{{ p.rootDirectory ?? '/ (repository root)' }}</dd>
             <dt>Type</dt>

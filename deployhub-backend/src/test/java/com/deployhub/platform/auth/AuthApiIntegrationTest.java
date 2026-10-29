@@ -89,6 +89,14 @@ class AuthApiIntegrationTest extends IntegrationTestSupport {
     // ---- 2. validation ----
 
     @Test
+    void namesInAnyLanguageAreAcceptedAndExtraSpacesRemoved() throws Exception {
+        anonymousMvc.perform(post("/api/auth/register").with(xsrf()).contentType(MediaType.APPLICATION_JSON)
+                        .content(registerJson("  राहुल   Verma ", "hindi-name@example.com", PASSWORD)))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.displayName").value("राहुल Verma"));
+    }
+
+    @Test
     void registrationRejectsInvalidInput() throws Exception {
         String tooManyBytes = "🔒".repeat(20); // 20 characters but 80 UTF-8 bytes > BCrypt's 72
         anonymousMvc.perform(post("/api/auth/register").with(xsrf()).contentType(MediaType.APPLICATION_JSON)
@@ -97,6 +105,15 @@ class AuthApiIntegrationTest extends IntegrationTestSupport {
                 .andExpect(jsonPath("$.errors.displayName").exists())
                 .andExpect(jsonPath("$.errors.email").exists())
                 .andExpect(jsonPath("$.errors.password").exists());
+
+        // Names: letters and spaces only, in any language.
+        for (String badName : new String[]{"Bob1", "Bob_Builder", "Bob!", "123", "Bob.Builder"}) {
+            anonymousMvc.perform(post("/api/auth/register").with(xsrf()).contentType(MediaType.APPLICATION_JSON)
+                            .content(registerJson(badName, "name-check@example.com", PASSWORD)))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.errors.displayName").value(containsString("only letters and spaces")));
+        }
+        assertThat(userRepository.findByEmail("name-check@example.com")).isEmpty();
 
         for (String badEmail : new String[]{"a@b", "two@@example.com", "no spaces@example.com"}) {
             anonymousMvc.perform(post("/api/auth/register").with(xsrf()).contentType(MediaType.APPLICATION_JSON)

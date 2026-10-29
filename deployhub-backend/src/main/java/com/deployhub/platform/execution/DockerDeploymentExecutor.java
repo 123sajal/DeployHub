@@ -177,15 +177,18 @@ public class DockerDeploymentExecutor implements DeploymentExecutor {
         if (ref == null || ref.isBlank() || ref.startsWith("-")) {
             throw DeploymentStepException.permanent("Invalid branch or commit: '" + ref + "'");
         }
-        context.info("Fetching " + spec.repositoryUrl() + " @ " + ref + " (read-only, public repositories only)");
+        boolean privateRepository = spec.repositoryToken() != null;
+        context.info("Fetching " + spec.repositoryUrl() + " @ " + ref + (privateRepository
+                ? " (read-only, private repository: using the project's access token)" : " (read-only)"));
         CommandRunner.Result init = git(List.of("init", "-q", dir.toString()), dir.getParent(), context, line -> { });
         if (!init.ok()) {
             throw DeploymentStepException.transientError("git init failed: " + lastLine(init));
         }
         CommandRunner.Result fetch = git(List.of("-C", dir.toString(), "fetch", "--depth", "1", "--no-tags",
-                "--end-of-options", spec.repositoryUrl(), ref), dir, context, context::output);
+                "--end-of-options", spec.repositoryUrl(), ref), dir, context, context::output,
+                GitSafety.authEnvironment(spec.repositoryUrl(), spec.repositoryToken()));
         if (!fetch.ok()) {
-            throw gitFailure(fetch, ref);
+            throw gitFailure(fetch, ref, privateRepository);
         }
         CommandRunner.Result checkout = git(List.of("-C", dir.toString(), "checkout", "-q", "--detach", "FETCH_HEAD"),
                 dir, context, context::output);
@@ -205,12 +208,20 @@ public class DockerDeploymentExecutor implements DeploymentExecutor {
 
     private CommandRunner.Result git(List<String> args, Path workingDir, ExecutionContext context,
                                      Consumer<String> onLine) {
+        return git(args, workingDir, context, onLine, Map.of());
+    }
+
+    /** @param auth credentials for a private repository (GitSafety.authEnvironment): environment only, never arguments */
+    private CommandRunner.Result git(List<String> args, Path workingDir, ExecutionContext context,
+                                     Consumer<String> onLine, Map<String, String> auth) {
         List<String> command = new ArrayList<>();
         command.add(settings.gitCommand());
         command.addAll(gitSafetyFlags);
         command.addAll(args);
+        Map<String, String> env = new java.util.HashMap<>(gitEnvironment());
+        env.putAll(auth);
         try {
-            return runner.run(command, gitEnvironment(), workingDir, settings.cloneTimeout(), context, onLine);
+            return runner.run(command, env, workingDir, settings.cloneTimeout(), context, onLine);
         } catch (CommandRunner.StartException e) {
             throw DeploymentStepException.permanent("git is not installed or not on the PATH: " + e.getMessage());
         }
@@ -220,7 +231,7 @@ public class DockerDeploymentExecutor implements DeploymentExecutor {
         return GitSafety.environment();
     }
 
-    private DeploymentStepException gitFailure(CommandRunner.Result result, String ref) {
+    private DeploymentStepException gitFailure(CommandRunner.Result result, String ref, boolean privateRepository) {
         String text = result.tailText().toLowerCase(Locale.ROOT);
         if (result.timedOut()) {
             return DeploymentStepException.transientError("Fetching the repository took longer than "
@@ -234,8 +245,11 @@ public class DockerDeploymentExecutor implements DeploymentExecutor {
         if (text.contains("repository not found") || text.contains("could not read username")
                 || text.contains("authentication") || text.contains("terminal prompts disabled")
                 || text.contains("returned error: 4")) {
-            return DeploymentStepException.permanent(
-                    "Repository not found or not public. DeployHub builds public repositories only.");
+            return DeploymentStepException.permanent(privateRepository
+                    ? "The access token doesn't work for this repository: it may be wrong or expired, or it doesn't have "
+                    + "read access. Add a new token on the project's Edit page (Private repository)."
+                    : "Repository not found or not public. If it's private, add an access token on the project's Edit "
+                    + "page (Private repository).");
         }
         return DeploymentStepException.transientError("Could not fetch the repository: " + lastLine(result));
     }
@@ -624,24 +638,32 @@ public class DockerDeploymentExecutor implements DeploymentExecutor {
                     + lastLine(result));
         }
         String reason = reason(result);
+        String hint = hint(reason);
+        String separator = hint.isEmpty() ? "" : reason.matches("(?s).*[.!?]\\s*$") ? " " : ". ";
         return DeploymentStepException.permanent(what + " failed (exit code " + result.exitCode() + "): " + reason
-                + hint(reason));
+                + separator + hint);
     }
 
     private static final java.util.regex.Pattern MISSING_NPM_SCRIPT =
             java.util.regex.Pattern.compile("(?i)missing script: \"?([\\w:.-]+)\"?");
 
-    /** What to do about common mistakes in the commands, in plain words; "" when there's nothing to add. */
+    /** What to do about common mistakes in the commands, as a sentence of its own; "" when there's nothing to add. */
     static String hint(String reason) {
         var missing = MISSING_NPM_SCRIPT.matcher(reason);
         if (missing.find()) {
             String script = missing.group(1);
-            return ". Your package.json has no \"" + script + "\" script, so \"npm run " + script + "\" can't run. Remove"
+            return "Your package.json has no \"" + script + "\" script, so \"npm run " + script + "\" can't run. Remove"
                     + " it from the command (a Node.js backend usually needs only npm install or npm ci), or check the"
                     + " App folder points at the right package.json.";
         }
-        if (reason.toLowerCase(Locale.ROOT).contains("can only install with an existing package-lock.json")) {
-            return ". The repository has no package-lock.json there: use npm install instead of npm ci.";
+        String lower = reason.toLowerCase(Locale.ROOT);
+        if (lower.contains("can only install with an existing package-lock.json")) {
+            return "The repository has no package-lock.json there: use npm install instead of npm ci.";
+        }
+        if (lower.contains("are in sync") || lower.contains("from lock file")) {
+            return "npm ci refused because package-lock.json doesn't match package.json (often it was made with another "
+                    + "npm version), so DeployHub ran npm install instead. If the build still failed, the real error is "
+                    + "in the output after npm install.";
         }
         return "";
     }

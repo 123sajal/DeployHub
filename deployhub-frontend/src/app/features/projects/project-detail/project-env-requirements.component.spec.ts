@@ -46,7 +46,7 @@ describe('ProjectEnvRequirementsComponent ("What this app needs")', () => {
     expect(text).toContain('1 of 4 set');
     expect(text).toContain('3 required missing');
     expect(text).toContain('JWT_SECRET');
-    expect(text).toContain('key from another service');
+    expect(text).toContain('from another service');
     expect(text).not.toContain('DeployHub sets this itself');
     expect(text).toContain('Fill in automatically (2)');
   });

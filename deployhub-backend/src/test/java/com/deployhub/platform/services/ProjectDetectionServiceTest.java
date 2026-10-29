@@ -5,18 +5,16 @@ import com.deployhub.platform.models.DTO.DetectRequestDTO;
 import com.deployhub.platform.models.DTO.DetectResponseDTO;
 import com.deployhub.platform.models.entities.UserMaster;
 import com.deployhub.platform.models.enums.ApplicationType;
+import com.deployhub.platform.security.RepositoryCheckThrottle;
 import com.deployhub.platform.services.Implementations.ProjectDetectionService;
 import com.deployhub.platform.services.Interface.ICurrentUserService;
-import com.deployhub.platform.services.Interface.IRepositoryFiles;
+import com.deployhub.platform.support.FakeRepositoryFiles;
 import org.junit.jupiter.api.Test;
 
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.Optional;
-import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -26,28 +24,10 @@ class ProjectDetectionServiceTest {
 
     private static final String REPO = "https://github.com/acme/app";
 
-    private final Map<String, String> files = new HashMap<>();
+    private final FakeRepositoryFiles repo = new FakeRepositoryFiles();
+    private final Map<String, String> files = repo.files;
     private final ProjectDetectionService service = new ProjectDetectionService(
-            (url, branch, smallFiles) -> {
-                if (branch.equals("missing")) {
-                    throw new IRepositoryFiles.RepositoryNotReadable("The branch 'missing' doesn't exist in this repository.");
-                }
-                return new IRepositoryFiles.Snapshot() {
-                    @Override
-                    public Set<String> paths() {
-                        return files.keySet();
-                    }
-
-                    @Override
-                    public Optional<String> read(String path) {
-                        return Optional.ofNullable(files.get(path));
-                    }
-
-                    @Override
-                    public void close() {
-                    }
-                };
-            },
+            repo,
             new ICurrentUserService() {
                 @Override
                 public Long currentUserId() {
@@ -59,7 +39,8 @@ class ProjectDetectionServiceTest {
                     return null;
                 }
             },
-            Clock.fixed(Instant.parse("2026-10-27T10:00:00Z"), ZoneOffset.UTC));
+            null, null,
+            new RepositoryCheckThrottle(Clock.fixed(Instant.parse("2026-10-27T10:00:00Z"), ZoneOffset.UTC)));
 
     private DetectResponseDTO detect(String folder) {
         return service.detect(new DetectRequestDTO(REPO, "main", folder));
@@ -99,7 +80,7 @@ class ProjectDetectionServiceTest {
         DetectResponseDTO result = detect("backend");
 
         assertThat(result.appType()).isEqualTo(ApplicationType.NODE_JS);
-        assertThat(result.buildCommand()).as("lock file, no build script").isEqualTo("npm ci");
+        assertThat(result.buildCommand()).as("lock file, no build script").isEqualTo("(npm ci || npm install)");
         assertThat(result.startCommand()).isEqualTo("npm run db:setup && npm start");
         assertThat(result.notes()).anyMatch(n -> n.contains("db:setup"));
     }
@@ -111,7 +92,7 @@ class ProjectDetectionServiceTest {
         DetectResponseDTO result = detect("./frontend/");
 
         assertThat(result.appType()).isEqualTo(ApplicationType.STATIC_SITE);
-        assertThat(result.buildCommand()).isEqualTo("npm ci && npm run build");
+        assertThat(result.buildCommand()).isEqualTo("(npm ci || npm install) && npm run build");
         assertThat(result.startCommand()).isEqualTo("npx --yes serve -s dist/ems-frontend/browser -l $PORT");
     }
 
@@ -136,7 +117,7 @@ class ProjectDetectionServiceTest {
         files.put("package.json", "{\"scripts\":{\"build\":\"react-scripts build\"},\"dependencies\":{\"react-scripts\":\"5\"}}");
         files.put("yarn.lock", "");
         DetectResponseDTO cra = detect(null);
-        assertThat(cra.buildCommand()).isEqualTo("yarn install --frozen-lockfile && yarn build");
+        assertThat(cra.buildCommand()).isEqualTo("(yarn install --frozen-lockfile || yarn install) && yarn build");
         assertThat(cra.startCommand()).isEqualTo("npx --yes serve -s build -l $PORT");
     }
 
@@ -149,7 +130,7 @@ class ProjectDetectionServiceTest {
         DetectResponseDTO result = detect(null);
 
         assertThat(result.appType()).isEqualTo(ApplicationType.NODE_JS);
-        assertThat(result.buildCommand()).isEqualTo("npm ci && npm run build");
+        assertThat(result.buildCommand()).isEqualTo("(npm ci || npm install) && npm run build");
         assertThat(result.startCommand()).isEqualTo("npm start");
     }
 
@@ -231,9 +212,17 @@ class ProjectDetectionServiceTest {
 
     @Test
     void aMissingBranchIsExplained() {
+        repo.notReadable = "The branch 'missing' doesn't exist in this repository.";
         DetectResponseDTO result = service.detect(new DetectRequestDTO(REPO, "missing", null));
 
         assertThat(result.appType()).isNull();
         assertThat(result.notes()).containsExactly("The branch 'missing' doesn't exist in this repository.");
+    }
+
+    @Test
+    void aTokenTypedIntoTheFormIsUsedForAPrivateRepository() {
+        files.put("package.json", "{}");
+        service.detect(new DetectRequestDTO(REPO, "main", null, "github_pat_abc123", null));
+        org.assertj.core.api.Assertions.assertThat(repo.lastToken).isEqualTo("github_pat_abc123");
     }
 }

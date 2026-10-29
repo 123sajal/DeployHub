@@ -1,10 +1,11 @@
-<main class="dh-auth">
+<main class="dh-auth dh-auth-3d">
+  <app-auth-backdrop />
   <form class="dh-auth-card" [formGroup]="form" (ngSubmit)="submit()" novalidate aria-labelledby="signup-title">
     <a class="dh-auth-brand" routerLink="/">
-      <span class="logo" aria-hidden="true"><i class="pi pi-bolt"></i></span> DeployHub
+      <app-logo />
     </a>
     <h1 id="signup-title">Create your account</h1>
-    <p class="sub">Deploy your first project in minutes.</p>
+    <p class="sub">Deploy your first project in minutes. Or <a routerLink="/signup">sign up with the assistant</a>.</p>
 
     @if (error(); as message) {
       <p-message severity="error" [text]="message" role="alert" />

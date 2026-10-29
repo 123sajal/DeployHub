@@ -57,6 +57,10 @@ public class ProjectGateways {
         this.tx.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
+    private static final Object PLAN_LOCK = new Object();
+    /** Several backend processes can still race through the unique index on public_port: retry that many times. */
+    private static final int MAX_PLAN_ATTEMPTS = 10;
+
     /** Refreshes the project's own address and those of every project that routes to it. */
     public void refreshAffectedBy(Long projectId) {
         Set<Long> affected = new LinkedHashSet<>();
@@ -68,12 +72,21 @@ public class ProjectGateways {
 
     /** Points the project's address at its current live app and route targets (creating it on first use). */
     public void refresh(Long projectId) {
-        DeploymentExecutor.Gateway gateway;
-        try {
-            gateway = tx.execute(s -> plan(projectId));
-        } catch (DataIntegrityViolationException | OptimisticLockingFailureException raced) {
-            // Another process took the same port, or edited the project, at the same moment: plan again.
-            gateway = tx.execute(s -> plan(projectId));
+        DeploymentExecutor.Gateway gateway = null;
+        for (int attempt = 1; ; attempt++) {
+            try {
+                // One plan at a time in this process: two deploys going live together picked the same free port and
+                // one of them ended up LIVE with a link that never opened (BUG-16).
+                synchronized (PLAN_LOCK) {
+                    gateway = tx.execute(s -> plan(projectId));
+                }
+                break;
+            } catch (DataIntegrityViolationException | OptimisticLockingFailureException raced) {
+                // Another process took the same port, or edited the project, at the same moment: plan again.
+                if (attempt >= MAX_PLAN_ATTEMPTS) {
+                    throw raced;
+                }
+            }
         }
         if (gateway != null) {
             executors.forMode(ExecutionMode.REAL).publish(gateway);

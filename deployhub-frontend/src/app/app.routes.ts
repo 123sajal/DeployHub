@@ -16,7 +16,15 @@ export const routes: Routes = [
     title: 'Log in - DeployHub',
   },
   {
+    // Sign-up with the DeployHub assistant (a conversation); the plain form stays at /signup/form.
     path: 'signup',
+    pathMatch: 'full',
+    canActivate: [guestGuard],
+    loadComponent: () => import('./features/onboarding/onboarding.component').then((m) => m.OnboardingComponent),
+    title: 'Sign up - DeployHub',
+  },
+  {
+    path: 'signup/form',
     canActivate: [guestGuard],
     loadComponent: () => import('./features/auth/signup/signup.component').then((m) => m.SignupComponent),
     title: 'Sign up - DeployHub',

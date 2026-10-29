@@ -29,6 +29,7 @@
 	<properties>
 		<java.version>21</java.version>
 		<springdoc.version>3.2.0</springdoc.version>
+		<anthropic.version>3.2.0</anthropic.version>
 		<tests.excluded>oracle,docker</tests.excluded>
 		<tests.included></tests.included>
 	</properties>
@@ -96,6 +97,13 @@
 			<groupId>org.springdoc</groupId>
 			<artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
 			<version>${springdoc.version}</version>
+		</dependency>
+
+		<!-- AI assistant: the official Anthropic SDK for the Claude API (ADR 0015). -->
+		<dependency>
+			<groupId>com.anthropic</groupId>
+			<artifactId>anthropic-java</artifactId>
+			<version>${anthropic.version}</version>
 		</dependency>
 
 		<dependency>

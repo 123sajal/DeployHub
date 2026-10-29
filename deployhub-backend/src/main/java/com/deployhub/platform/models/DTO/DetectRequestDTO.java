@@ -19,10 +19,29 @@ public record DetectRequestDTO(
         @Size(max = 200)
         @Pattern(regexp = "^\\s*(\\./)?[A-Za-z0-9_-][A-Za-z0-9._-]*(/[A-Za-z0-9_-][A-Za-z0-9._-]*)*/?\\s*$|^\\s*$",
                 message = "must be a folder inside the repository, e.g. backend or apps/web (letters, digits, . _ - and /)")
-        String rootDirectory) {
+        String rootDirectory,
+
+        /** For a private repository: an access token typed into the form (not saved by detecting). */
+        @Size(max = 500)
+        @Pattern(regexp = "^\\s*[A-Za-z0-9_.~+/=:-]*\\s*$", message = "is not a valid access token")
+        String repositoryToken,
+
+        /** When editing a project: use its saved access token if none is typed. */
+        Long projectId) {
+
+    public DetectRequestDTO(String repositoryUrl, String branch, String rootDirectory) {
+        this(repositoryUrl, branch, rootDirectory, null, null);
+    }
+
+    @Override
+    public String toString() {
+        return "DetectRequestDTO[repositoryUrl=" + repositoryUrl + ", branch=" + branch + ", rootDirectory="
+                + rootDirectory + ", repositoryToken=" + (repositoryToken == null ? "none" : "***") + "]";
+    }
 
     public DetectRequestDTO {
         repositoryUrl = repositoryUrl == null ? null : repositoryUrl.trim();
         branch = branch == null ? null : branch.trim();
+        repositoryToken = repositoryToken == null || repositoryToken.isBlank() ? null : repositoryToken.trim();
     }
 }

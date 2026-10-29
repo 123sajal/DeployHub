@@ -25,6 +25,21 @@ public interface DeploymentJobRepository extends JpaRepository<DeploymentJob, Lo
 
     Optional<DeploymentJob> findByDeploymentId(Long deploymentId);
 
+    /**
+     * True while a job of one of the project's deployments is still being worked on. A deployment shows LIVE a moment
+     * before its job has written its last log lines and finished; deleting in that window broke the job (BUG-18).
+     */
+    @Query("""
+            SELECT COUNT(j) > 0 FROM DeploymentJob j
+            WHERE j.status = com.deployhub.platform.models.enums.JobStatus.RUNNING
+              AND j.deploymentId IN (SELECT d.id FROM Deployment d WHERE d.project.id = :projectId)""")
+    boolean anyRunningForProject(@Param("projectId") Long projectId);
+
+    @Query("""
+            SELECT COUNT(j) > 0 FROM DeploymentJob j
+            WHERE j.status = com.deployhub.platform.models.enums.JobStatus.RUNNING AND j.deploymentId = :deploymentId""")
+    boolean isRunning(@Param("deploymentId") Long deploymentId);
+
     @Query("""
             select j.id from DeploymentJob j
             where (j.status = com.deployhub.platform.models.enums.JobStatus.PENDING and j.availableAt <= :now)
