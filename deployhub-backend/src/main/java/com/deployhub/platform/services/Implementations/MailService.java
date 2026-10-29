@@ -4,6 +4,7 @@ import com.deployhub.platform.services.Interface.IMailService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.core.NestedExceptionUtils;
 import org.springframework.mail.MailException;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
@@ -60,7 +61,7 @@ public class MailService implements IMailService {
             sender.send(message);
             log.info("Password reset code emailed to {}", email);
         } catch (MailException e) {
-            log.error("Could not email the password reset code to {}: {}", email, e.getMessage());
+            log.error("Could not email the password reset code to {}: {}", email, reason(e));
         }
     }
 
@@ -92,7 +93,17 @@ public class MailService implements IMailService {
             sender.send(message);
             log.info("Email code sent to {}", email);
         } catch (MailException e) {
-            log.error("Could not email the code to {}: {}", email, e.getMessage());
+            log.error("Could not email the code to {}: {}", email, reason(e));
         }
+    }
+
+    /**
+     * The mail server's own answer (e.g. Gmail's "535-5.7.8 Username and Password not accepted"), not just Spring's
+     * "Authentication failed", so the log says what to fix. Never contains the password.
+     */
+    private static String reason(MailException e) {
+        Throwable cause = NestedExceptionUtils.getMostSpecificCause(e);
+        String detail = cause.getMessage() == null ? cause.getClass().getSimpleName() : cause.getMessage();
+        return cause == e ? detail : e.getMessage() + " (" + detail.strip().replaceAll("\\s+", " ") + ")";
     }
 }

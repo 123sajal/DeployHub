@@ -30,6 +30,11 @@
 		<java.version>21</java.version>
 		<springdoc.version>3.2.0</springdoc.version>
 		<anthropic.version>3.2.0</anthropic.version>
+		<!-- H2 2.4.240 (Spring Boot's default) breaks CHECK constraints on file databases once the connection pool
+		     replaces a connection: every insert into users/email_codes failed with "Check constraint invalid" after
+		     ~30 minutes (BUG-21, the demo copy). 2.3.232 is the version Flyway is verified with and has no such
+		     problem. H2FileConstraintsAfterMigrationTest fails if this is upgraded to a version with the bug. -->
+		<h2.version>2.3.232</h2.version>
 		<tests.excluded>oracle,docker</tests.excluded>
 		<tests.included></tests.included>
 	</properties>
