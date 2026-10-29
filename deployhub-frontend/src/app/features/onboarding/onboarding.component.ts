@@ -264,6 +264,13 @@ export class OnboardingComponent {
       summary: this.billing.summary().pipe(catchError(() => of(null))),
       status: this.api.status().pipe(catchError(() => of(null))),
     }).subscribe(({ summary, status }) => {
+      if (summary && !summary.enabled) {
+        // Paid deploys are switched off: nothing to discount, so no student check now.
+        this.say('bot', 'Your account is ready! Deploys are free on DeployHub right now, so there is nothing to pay. '
+          + 'When paid deploys start, students can verify in Settings > Student discount.');
+        this.finish();
+        return;
+      }
       if (summary?.studentDiscount) {
         this.discountText = `${formatPrice(summary.studentDiscount, summary.currency)} off`;
       }

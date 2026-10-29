@@ -28,6 +28,10 @@ import { formatPrice } from '../../core/utils/money';
           </select>
         </div>
 
+        @if (billing() && !billing()!.enabled) {
+          <p-message severity="info"
+                     text="Deploys are free on DeployHub right now, so the student discount isn't needed. You can still verify now; it will apply when paid deploys start." />
+        }
         @if (verifiedUntil(); as until) {
           <p-message severity="success"
                      [text]="'Verified student until ' + until + (u.studentVerifiedBy === 'ID_CARD' ? ' (student ID card).' : ' (college email).')

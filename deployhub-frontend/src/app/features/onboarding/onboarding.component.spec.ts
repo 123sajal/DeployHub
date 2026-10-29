@@ -144,7 +144,7 @@ describe('OnboardingComponent', () => {
   it('sends a student to the college email in Settings when the photo check is off', async () => {
     const fixture = await render();
     api.status.mockReturnValue(of({ aiAvailable: true, idCardCheck: false }));
-    billing.summary.mockReturnValue(of({ studentDiscount: 500, currency: 'INR' }));
+    billing.summary.mockReturnValue(of({ enabled: true, studentDiscount: 500, currency: 'INR' }));
     auth.register.mockReturnValue(of({ id: 1, email: 'a@x.com', displayName: 'Asha' }));
     const component = fixture.componentInstance as unknown as {
       name: { set(v: string): void };
@@ -168,6 +168,33 @@ describe('OnboardingComponent', () => {
     expect(text(fixture)).toContain('₹5 off');
     expect(fixture.nativeElement.querySelector('input[type=file]')).toBeNull();
     expect(api.verifyStudentIdCard).not.toHaveBeenCalled();
+  });
+
+  it('skips the student check while deploys are free', async () => {
+    const fixture = await render();
+    api.status.mockReturnValue(of({ aiAvailable: true, idCardCheck: true }));
+    billing.summary.mockReturnValue(of({ enabled: false, studentDiscount: 500, currency: 'INR' }));
+    auth.register.mockReturnValue(of({ id: 1, email: 'a@x.com', displayName: 'Asha' }));
+    const component = fixture.componentInstance as unknown as {
+      name: { set(v: string): void };
+      email: { set(v: string): void };
+      occupation: { set(v: string): void };
+      step: { set(v: string): void };
+    };
+    component.name.set('Asha');
+    component.email.set('a@x.com');
+    component.occupation.set('STUDENT');
+    component.step.set('password');
+    await fixture.whenStable();
+    for (const id of ['ob-password', 'ob-confirm']) {
+      const input = fixture.nativeElement.querySelector(`#${id}`) as HTMLInputElement;
+      input.value = 'correct-horse-battery';
+      input.dispatchEvent(new Event('input'));
+    }
+    fixture.nativeElement.querySelector('form.password').dispatchEvent(new Event('submit'));
+    await fixture.whenStable();
+    expect(text(fixture)).toContain('Deploys are free on DeployHub right now');
+    expect(fixture.nativeElement.querySelector('input[type=file]')).toBeNull();
   });
 
   it('checks the password locally before creating the account', async () => {

@@ -120,7 +120,7 @@ stops with that message otherwise).
 | `Idempotency-Key` on deployment creation (DB-enforced; same key + different request → 422) | ✅ Milestone 4 |
 | Backpressure: per-worker concurrency limit, max 5 in-progress deployments per user (429) | ✅ Milestone 4 |
 | Deployment status history (who/when/why/attempt) in API and UI | ✅ Milestone 4 |
-| Paid deploys: first 2 deployed projects free, other projects pay per deploy with Razorpay Checkout (402 → pay → deploy) | ✅ Implemented (test mode); see "Paid deploys" |
+| Paid deploys: first 2 deployed projects free, other projects pay per deploy with Razorpay Checkout (402 → pay → deploy) | ⏸️ Built and tested, **paused since 2026-10-29: every deploy is free** (`deployhub.billing.enabled=false`; set `true` to turn it back on). See "Paid deploys" |
 | Real deployments: read-only `git fetch` of a public repo, `docker build`, `docker run` with limits, HTTP health check, then LIVE | ✅ Milestone 6 (`deployhub.execution.mode=REAL`, the default) |
 | Generated Dockerfiles for Java/Spring Boot, Node.js, static sites, Python; or the repository's own Dockerfile | ✅ Milestone 6 |
 | Container isolation: memory/CPU/process limits, all capabilities dropped, no-new-privileges, unprivileged user, published on 127.0.0.1 only | ✅ Milestone 6 |
@@ -206,7 +206,8 @@ All endpoints except register, login, forgot/reset password and health need a lo
 the `X-XSRF-TOKEN` header matching the `XSRF-TOKEN` cookie (Angular does this automatically).
 
 ## Paid deploys (Razorpay)
-> Switched off from 2026-10-27 to 2026-10-28 (`deployhub.billing.enabled=false`); **on again since 2026-10-28**.
+> **Paused since 2026-10-29: every deploy is free** (`deployhub.billing.enabled=false`). Also off 2026-10-27 to 2026-10-28.
+> The code below stays built and tested; set `deployhub.billing.enabled=true` to turn paid deploys back on.
 > Deploys made while it was off didn't use up free projects.
 
 - **Your first 2 projects are free** (`deployhub.billing.free-projects`), e.g. a backend and a frontend. The
